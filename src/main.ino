@@ -5,16 +5,27 @@ const uint8_t ABORT = 0b010101;   // 21 decimal
 const uint8_t ARMED = 0b100000;   // 32 decimal
 const uint8_t LAUNCH = 0b101010;  // 42 decimal
 
+uint8_t launchModeState = 0b000000;
+
 // Current state of the rocket
 uint8_t rocketState = 0b000000;
 
-// Possible operation modes
-enum operationMode
+// Operation modes
+enum MODE
 {
   NONE_MODE,
   LAUNCH_MODE,
   FUELING_MODE,
   DEV_MODE
+};
+
+enum LAUNCH_MODE_ENUM
+{
+  PREARM_BTN,
+  ABORT_BTN,
+  ARM_ON,
+  ARM_OFF,
+  LAUNCH_BTN
 };
 
 const int PIN_GN2_F = 1;
@@ -39,7 +50,7 @@ struct DebouncedInput {
   unsigned long lastDebounceTime = 0; // the last time the output pin was toggled
 };
 
-DebouncedInput gn2Flow = { PIN_ARM_SWITCH,   LOW, LOW, 0 };
+DebouncedInput gn2Flow = { PIN_ARM_SWITCH, LOW, LOW, 0 };
 DebouncedInput lngFlow = {PIN_START_BUTTON, LOW, LOW, 0};
 DebouncedInput loxFlow = {PIN_LAUNCH_BUTTON, LOW, LOW, 0};
 DebouncedInput gn2Vault = {PIN_ABORT_BUTTON, LOW, LOW, 0};
@@ -55,7 +66,9 @@ DebouncedInput dev_M = {PIN_ABORT_BUTTON, LOW, LOW, 0};
 // the debounce time; increase if the output flickers
 unsigned long debounceDelay = 50;
 
-void debounceButtonStateRead(DebouncedInput *input, MachineState controlButton)
+// TODO: this function updates the DebouncedInput struct when called
+//       this reads a button
+void debounceButtonRead(DebouncedInput *input)
 {
   unsigned int pin = input->pin;
   unsigned int currState = input->currState;
@@ -101,17 +114,104 @@ void debounceButtonStateRead(DebouncedInput *input, MachineState controlButton)
   lastButtonState = reading;
 }
 
-ButtonPress getButtonPress()
+
+// TODO: this function updates the DebouncedInput struct when called
+//       this reads a switch
+void debounceSwitchRead(DebouncedInput *input)
+{
+
+}
+
+
+MODE getModePress()
 {
   // TODO: Replace with real pin reading logic or test code
   // only one button press should be registered at one time
   // if multiple button reads are registered, must have set priority.
-  return NONE;
+
+  debounceSwitchRead(&launch_M);
+  debounceSwitchRead(&fueling_M);
+  debounceSwitchRead(&dev_M);
+
+  unsigned int launch_button = ;
+
+
+
+  return NONE_MODE;
+}
+
+LAUNCH_MODE_ENUM getLaunchModePress()
+{
+  // TODO: Replace with real pin reading logic or test code
+  // only one button press should be registered at one time
+  // if multiple button reads are registered, must have set priority.
+  return PREARM_BTN;
+}
+
+void launch_mode_logic(){
+  LAUNCH_MODE_ENUM launchModePress = getLaunchModePress();
+
+  // State machine for rocket
+  switch (rocketState)
+  {
+  case PRE_ARM:
+    if (launchModePress == ABORT_BTN)
+    {
+      rocketState = ABORT;
+    }
+    else if (launchModePress == ARM_ON)
+    {
+      rocketState = ARMED;
+    }
+    break;
+
+  case ARMED:
+    if (launchModePress == ABORT_BTN)
+    {
+      rocketState = ABORT;
+    }
+    else if (launchModePress == LAUNCH_BTN)
+    {
+      rocketState = LAUNCH;
+    }
+    else if (launchModePress == ARM_OFF)
+    {
+      rocketState = PRE_ARM;
+    }
+    break;
+
+  case LAUNCH:
+    // rocket is launching
+    // in static fire: abort is possible
+    // in launch: abort is not possible
+    if (launchModePress == ABORT_BTN)
+    {
+      rocketState = ABORT;
+    }
+    break;
+
+  case ABORT:
+    // if in abort cannot get out
+    break;
+  }
 }
 
 
+void fueling_mode_logic(){
+
+
+}
+
+
+void dev_mode_logic(){
+
+
+}
+
 void setup() {
-  operationMode = NONE_MODE; // start in PRE_ARM
+  MODE operationMode = NONE_MODE;
+  LAUNCH_MODE_ENUM launchState = PREARM_BTN;
+
   // initialize all inputs:
   pinMode(PIN_GN2_F, INPUT);
   pinMode(PIN_LNG_F, INPUT);
@@ -128,52 +228,25 @@ void setup() {
 }
 
 void loop() {
-  ButtonPress press = getButtonPress();
-
-  // State machine for rocket
-  switch (rocketState)
+  MODE modePress = getModePress();
+  switch (modePress)
   {
-
-  case PRE_ARM:
-    if (press == ABORT_BTN)
-    {
-      rocketState = ABORT;
-    }
-    else if (press == ARM_BTN)
-    {
-      rocketState = ARMED;
-    }
-    // else remain in PRE_ARM
+  case LAUNCH_MODE:
+    launch_mode_logic();
     break;
 
-  case ARMED:
-    if (press == ABORT_BTN)
-    {
-      rocketState = ABORT;
-    }
-    else if (press == LAUNCH_BTN)
-    {
-      rocketState = LAUNCH;
-    }
-    else if (press == ARM_BTN)
-    {
-      // might have to modify depending on how switch is read
-      rocketState = PRE_ARM;
-    }
+  case FUELING_MODE:
+    fueling_mode_logic();
     break;
 
-  case LAUNCH:
-    // rocket is launching, possibly try to abort?
-    if (press == ABORT_BTN)
-    {
-      rocketState = ABORT;
-    }
+  case DEV_MODE:
+    dev_mode_logic();
     break;
-
-  case ABORT:
-    // if in abort cannot get out
+  
+  default:
     break;
   }
+
 
   // TODO: based on current state modify valves
   setValves(rocketState); // TODO: implement
