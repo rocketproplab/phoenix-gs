@@ -6,15 +6,15 @@ const uint8_t ARMED = 0b100000;   // 32 decimal
 const uint8_t LAUNCH = 0b101010;  // 42 decimal
 
 // Current state of the rocket
-uint8_t rocketState = PRE_ARM;
+uint8_t rocketState = 0b000000;
 
-// Possible inputs
-enum ButtonPress
+// Possible operation modes
+enum operationMode
 {
-  NONE,
-  ABORT_BTN,
-  ARM_BTN,
-  LAUNCH_BTN
+  NONE_MODE,
+  LAUNCH_MODE,
+  FUELING_MODE,
+  DEV_MODE
 };
 
 const int PIN_GN2_F = 1;
@@ -109,20 +109,9 @@ ButtonPress getButtonPress()
   return NONE;
 }
 
-void setValves()
-{
-  // TODO: set valves open/closed based on state
-  bool gn2_flow = rocketState & 0b100000;
-  bool gn2_vent = rocketState & 0b010000;
-  bool lng_flow = rocketState & 0b001000;
-  bool lng_vent = rocketState & 0b000100;
-  bool lox_flow = rocketState & 0b000010;
-  bool lox_vent = rocketState & 0b000001;
-}
 
 void setup() {
-  rocketState = NONE; // start in PRE_ARM
-
+  operationMode = NONE_MODE; // start in PRE_ARM
   // initialize all inputs:
   pinMode(PIN_GN2_F, INPUT);
   pinMode(PIN_LNG_F, INPUT);
