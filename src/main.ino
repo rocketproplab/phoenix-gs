@@ -38,6 +38,7 @@ enum LAUNCH_MODE_ENUM
 
 LAUNCH_MODE_ENUM launchModePress;
 
+// Physical wiring on the Arduino
 const int PIN_GN2_F = 1;
 const int PIN_LNG_F = 2;
 const int PIN_LOX_F = 3;
@@ -51,8 +52,7 @@ const int PIN_LAUNCH_M = 10;
 const int PIN_FUELING_M = 11;
 const int PIN_DEV_M = 12;
 
-// —— GLOBAL STATE ——
-// Raw + debounced states:
+// Debounced states:
 struct DebouncedInput {
   unsigned int pin;
   unsigned int currState;
@@ -208,6 +208,9 @@ LAUNCH_MODE_ENUM getLaunchModePress(LAUNCH_MODE_ENUM PRE_MODE)
   }
 }
 
+/*
+Runs the launch mode logic according to the state diagram
+*/
 void launch_mode_logic(){
   launchModePress = getLaunchModePress(launchModePress);
 
@@ -256,6 +259,11 @@ void launch_mode_logic(){
   }
 }
 
+/*
+Runs the fueling mode logic
+Vent valves can be opened/closed
+Flow valves are all closed
+*/
 void fueling_mode_logic(){
 
   switch_control control_list[] = {
@@ -282,6 +290,10 @@ void fueling_mode_logic(){
   rocketState = closeValve(rocketState, lox_flow_mask);
 }
 
+/*
+Runs the dev mode logic
+All valves can be opened/closed
+*/
 void dev_mode_logic(){
 
   switch_control control_list[] = {
