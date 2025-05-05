@@ -84,6 +84,7 @@ unsigned long debounceDelay = 50;
 
 // TODO: this function updates the DebouncedInput struct when called
 //       this reads a button
+// Note: using INPUT_PULLUP so LOW means a button is pressed
 void debounceButtonRead(DebouncedInput *input)
 {
   unsigned int pin = input->pin;
@@ -130,9 +131,9 @@ void debounceButtonRead(DebouncedInput *input)
   lastButtonState = reading;
 }
 
-
 // TODO: this function updates the DebouncedInput struct when called
 //       this reads a switch
+// Note: using INPUT_PULLUP so LOW means a button is pressed
 void debounceSwitchRead(DebouncedInput *input)
 {
 
@@ -307,7 +308,7 @@ void dev_mode_logic(){
 }
 
 
-//TODO: implement send rocket state
+//TODO: implement send rocket state function to the flight computer over ethernet
 void sendRocketState(uint8_t currRocketState)
 {
 }
@@ -321,18 +322,18 @@ void setup() {
   launchModePress = PREARM_BTN;
 
   // initialize all inputs:
-  pinMode(PIN_GN2_F, INPUT);
-  pinMode(PIN_LNG_F, INPUT);
-  pinMode(PIN_LOX_F, INPUT);
-  pinMode(PIN_GN2_V, INPUT);
-  pinMode(PIN_LNG_V, INPUT);
-  pinMode(PIN_LOX_V, INPUT);
-  pinMode(PIN_ARM, INPUT);
-  pinMode(PIN_ABORT, INPUT);
-  pinMode(PIN_LAUNCH, INPUT);
-  pinMode(PIN_LAUNCH_M, INPUT);
-  pinMode(PIN_FUELING_M, INPUT);
-  pinMode(PIN_DEV_M, INPUT);
+  pinMode(PIN_GN2_F, INPUT_PULLUP);
+  pinMode(PIN_LNG_F, INPUT_PULLUP);
+  pinMode(PIN_LOX_F, INPUT_PULLUP);
+  pinMode(PIN_GN2_V, INPUT_PULLUP);
+  pinMode(PIN_LNG_V, INPUT_PULLUP);
+  pinMode(PIN_LOX_V, INPUT_PULLUP);
+  pinMode(PIN_ARM, INPUT_PULLUP);
+  pinMode(PIN_ABORT, INPUT_PULLUP);
+  pinMode(PIN_LAUNCH, INPUT_PULLUP);
+  pinMode(PIN_LAUNCH_M, INPUT_PULLUP);
+  pinMode(PIN_FUELING_M, INPUT_PULLUP);
+  pinMode(PIN_DEV_M, INPUT_PULLUP);
 
   gn2Flow = {PIN_GN2_F, LOW, LOW, 0};
   lngFlow = {PIN_LNG_F, LOW, LOW, 0};
