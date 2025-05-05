@@ -55,7 +55,7 @@ DebouncedInput dev_M = {PIN_ABORT_BUTTON, LOW, LOW, 0};
 // the debounce time; increase if the output flickers
 unsigned long debounceDelay = 50;
 
-void debounceButtonStateRead(DebouncedInput *input, MachineState controlButton)
+void debounceButtonStateRead(DebouncedInput *input)
 {
   unsigned int pin = input->pin;
   unsigned int currState = input->currState;
@@ -63,42 +63,36 @@ void debounceButtonStateRead(DebouncedInput *input, MachineState controlButton)
   unsigned long lastDebounceTime = input->lastDebounceTime;
 
   int reading = digitalRead(pin);
-  
-
-  // check to see if you just pressed the button
-  // (i.e. the input went from LOW to HIGH), and you've waited long enough
-  // since the last press to ignore any noise:
-
-  // If the switch changed, due to noise or pressing:
-  if (reading != lastState)
-  {
-    // reset the debouncing timer
+  if (reading != lastState) {
     lastDebounceTime = millis();
   }
 
-  if ((millis() - lastDebounceTime) > debounceDelay)
-  {
-    // whatever the reading is at, it's been there for longer than the debounce
-    // delay, so take it as the actual current state:
-
-    // if the button state has changed:
-    if (reading != lastState)
-    {
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    if (reading != lastState) {
       currState = reading;
-
-      // only toggle if the new button state is HIGH
-      if (currState == HIGH)
-      {
-        MachineState = controlButton;
-      }
     }
   }
+  lastState = reading;
+}
 
-  // set the LED:
-  digitalWrite(ledPin, ledState);
+void debounceSwitchRead(DebouncedInput *input)
+{
+  unsigned int pin = input->pin;
+  unsigned int currState = input->currState;
+  unsigned int lastState = input->lastState;
+  unsigned long lastDebounceTime = input->lastDebounceTime;
 
-  // save the reading. Next time through the loop, it'll be the lastButtonState:
-  lastButtonState = reading;
+  int reading = digitalRead(pin);
+  if (reading != lastState) {
+    lastDebounceTime = millis();
+  }
+
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    if (reading != currState) {
+      currState = reading;
+    }
+  }
+  lastReading = reading;
 }
 
 ButtonPress getButtonPress()
