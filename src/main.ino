@@ -1,5 +1,3 @@
-// Using binary literal for rocket state
-#include <system_error>
 
 const uint8_t PRE_ARM = 0b000000; // 0  decimal
 const uint8_t ABORT = 0b010101;   // 21 decimal
@@ -38,8 +36,7 @@ enum LAUNCH_MODE_ENUM
 
 LAUNCH_MODE_ENUM launchModePress;
 
-// Physical wiring on the Arduino
-const int PIN_GN2_F = 1;
+const int PIN_GN2_F = 13;
 const int PIN_LNG_F = 2;
 const int PIN_LOX_F = 3;
 const int PIN_GN2_V = 4;
@@ -52,8 +49,10 @@ const int PIN_LAUNCH_M = 10;
 const int PIN_FUELING_M = 11;
 const int PIN_DEV_M = 12;
 
-// Debounced states:
-struct DebouncedInput {
+// —— GLOBAL STATE ——
+// Raw + debounced states:
+struct DebouncedInput
+{
   unsigned int pin;
   unsigned int currState;
   unsigned int lastState;
@@ -67,7 +66,7 @@ DebouncedInput gn2Vent;
 DebouncedInput lngVent;
 DebouncedInput loxVent;
 DebouncedInput arm;
-DebouncedInput abort;
+DebouncedInput abort_mission;
 DebouncedInput launch;
 DebouncedInput launch_M;
 DebouncedInput fueling_M;
@@ -80,63 +79,63 @@ struct switch_control
 };
 
 // the debounce time; increase if the output flickers
-unsigned long debounceDelay = 50;
+unsigned long debounceButtonDelay = 30;
+unsigned long debounceSwitchDelay = 30;
 
-// TODO: this function updates the DebouncedInput struct when called
-//       this reads a button
-// Note: using INPUT_PULLUP so LOW means a button is pressed
 void debounceButtonRead(DebouncedInput *input)
 {
-  unsigned int pin = input->pin;
-  unsigned int currState = input->currState;
-  unsigned int lastState = input->lastState;
-  unsigned long lastDebounceTime = input->lastDebounceTime;
+  int reading = digitalRead(input->pin);
 
-  int reading = digitalRead(pin);
-  
-
-  // check to see if you just pressed the button
-  // (i.e. the input went from LOW to HIGH), and you've waited long enough
-  // since the last press to ignore any noise:
-
-  // If the switch changed, due to noise or pressing:
-  if (reading != lastState)
+  if (reading == LOW)
   {
-    // reset the debouncing timer
-    lastDebounceTime = millis();
+    reading = HIGH;
+  }
+  else if (reading == HIGH)
+  {
+    reading = LOW;
   }
 
-  if ((millis() - lastDebounceTime) > debounceDelay)
+  if (reading != input->lastState)
   {
-    // whatever the reading is at, it's been there for longer than the debounce
-    // delay, so take it as the actual current state:
+    input->lastDebounceTime = millis();
+  }
 
-    // if the button state has changed:
-    if (reading != lastState)
+  if ((millis() - input->lastDebounceTime) > debounceButtonDelay)
+  {
+    if (reading != input->currState)
     {
-      currState = reading;
-
-      // only toggle if the new button state is HIGH
-      if (currState == HIGH)
-      {
-        MachineState = controlButton;
-      }
+      input->currState = reading;
     }
   }
-
-  // set the LED:
-  digitalWrite(ledPin, ledState);
-
-  // save the reading. Next time through the loop, it'll be the lastButtonState:
-  lastButtonState = reading;
+  input->lastState = reading;
 }
 
-// TODO: this function updates the DebouncedInput struct when called
-//       this reads a switch
-// Note: using INPUT_PULLUP so LOW means a button is pressed
 void debounceSwitchRead(DebouncedInput *input)
 {
+  int reading = digitalRead(input->pin);
 
+  if (reading == LOW)
+  {
+    reading = HIGH;
+  }
+  else if (reading == HIGH)
+  {
+    reading = LOW;
+  }
+
+  if (reading != input->lastState)
+  {
+    input->lastDebounceTime = millis();
+  }
+
+  if ((millis() - input->lastDebounceTime) > debounceButtonDelay)
+  {
+    if (reading != input->currState)
+    {
+      input->currState = reading;
+    }
+  }
+  input->lastState = reading;
 }
 
 uint8_t openValve(uint8_t rocket_state, uint8_t valve)
@@ -157,22 +156,27 @@ MODE getModePress(MODE PRE_MODE)
   debounceButtonRead(&dev_M);
 
   unsigned int launch_button = launch_M.currState;
-  unsigned int fueling_button = fueling_M.currState; 
+  unsigned int fueling_button = fueling_M.currState;
   unsigned int dev_button = dev_M.currState;
 
-  if (launch_button + fueling_button + dev_button > 1){
-    return NONE_MODE;
+  if (launch_button + fueling_button + dev_button > 1)
+  {
+    return PRE_MODE;
   }
-  else if (launch_button){
+  else if (launch_button)
+  {
     return LAUNCH_MODE;
   }
-  else if (fueling_button){
+  else if (fueling_button)
+  {
     return FUELING_MODE;
   }
-  else if (dev_button){
+  else if (dev_button)
+  {
     return DEV_MODE;
   }
-  else{
+  else
+  {
     return PRE_MODE;
   }
 }
@@ -181,37 +185,41 @@ LAUNCH_MODE_ENUM getLaunchModePress(LAUNCH_MODE_ENUM PRE_MODE)
 {
   // read relevent switches/buttons
   debounceSwitchRead(&arm);
-  debounceButtonRead(&abort);
+  debounceButtonRead(&abort_mission);
   debounceButtonRead(&launch);
 
   unsigned int arm_switch = arm.currState;
-  unsigned int abort_button = abort.currState;
+  unsigned int abort_button = abort_mission.currState;
   unsigned int launch_button = launch.currState;
 
-  if (abort_button & launch_button){
+  if (abort_button & launch_button)
+  {
     return PREARM_BTN;
   }
-  else if (arm_switch){
+  else if (arm_switch)
+  {
     return ARM_ON;
   }
-  else if (!arm_switch){
+  else if (!arm_switch)
+  {
     return ARM_OFF;
   }
-  else if (abort_button){
+  else if (abort_button)
+  {
     return ABORT_BTN;
   }
-  else if (launch_button){
+  else if (launch_button)
+  {
     return LAUNCH_BTN;
   }
-  else{
+  else
+  {
     return PRE_MODE;
   }
 }
 
-/*
-Runs the launch mode logic according to the state diagram
-*/
-void launch_mode_logic(){
+void launch_mode_logic()
+{
   launchModePress = getLaunchModePress(launchModePress);
 
   // State machine for rocket
@@ -259,12 +267,8 @@ void launch_mode_logic(){
   }
 }
 
-/*
-Runs the fueling mode logic
-Vent valves can be opened/closed
-Flow valves are all closed
-*/
-void fueling_mode_logic(){
+void fueling_mode_logic()
+{
 
   switch_control control_list[] = {
       {&gn2Vent, gn2_vent_mask},
@@ -290,11 +294,8 @@ void fueling_mode_logic(){
   rocketState = closeValve(rocketState, lox_flow_mask);
 }
 
-/*
-Runs the dev mode logic
-All valves can be opened/closed
-*/
-void dev_mode_logic(){
+void dev_mode_logic()
+{
 
   switch_control control_list[] = {
       {&gn2Flow, gn2_flow_mask},
@@ -307,6 +308,10 @@ void dev_mode_logic(){
   for (switch_control item : control_list)
   {
     debounceSwitchRead(item.input);
+    Serial.println("Pin Number: ");
+    Serial.println(item.input->pin);
+    Serial.println("State: ");
+    Serial.println(item.input->currState);
 
     if (item.input->currState)
     {
@@ -319,13 +324,14 @@ void dev_mode_logic(){
   }
 }
 
-
-//TODO: implement send rocket state function to the flight computer over ethernet
+// TODO: implement send rocket state
 void sendRocketState(uint8_t currRocketState)
 {
 }
 
-void setup() {
+void setup()
+{
+  Serial.begin(9600);
 
   // set current state of the rocket
   rocketState = 0b000000;
@@ -354,36 +360,48 @@ void setup() {
   lngVent = {PIN_LNG_V, LOW, LOW, 0};
   loxVent = {PIN_LOX_V, LOW, LOW, 0};
   arm = {PIN_ARM, LOW, LOW, 0};
-  abort = {PIN_ABORT, LOW, LOW, 0};
+  abort_mission = {PIN_ABORT, LOW, LOW, 0};
   launch = {PIN_LAUNCH, LOW, LOW, 0};
   launch_M = {PIN_LAUNCH_M, LOW, LOW, 0};
   fueling_M = {PIN_FUELING_M, LOW, LOW, 0};
   dev_M = {PIN_DEV_M, LOW, LOW, 0};
 }
 
-void loop() {
+void loop()
+{
+  // Serial.println("Running");
   operationMode = getModePress(operationMode);
 
   switch (operationMode)
   {
   case LAUNCH_MODE:
+    Serial.println("Launch Mode");
+    Serial.println("Rocket State: ");
+    Serial.println(rocketState);
     launch_mode_logic();
     break;
 
   case FUELING_MODE:
+    Serial.println("Fueling Mode");
+    Serial.println("Rocket State: ");
+    Serial.println(rocketState);
     fueling_mode_logic();
     break;
 
   case DEV_MODE:
+    Serial.println("Dev Mode");
+    Serial.println("Rocket State: ");
+    Serial.println(rocketState);
     dev_mode_logic();
     break;
-  
+
   default:
+    Serial.println("Idling Mode");
     break;
   }
 
   // TODO: implement sendRocketState that send
   //       rocketState to the flight computer
-  sendRocketState(rocketState); // TODO: implement
-  delay(50);              // small debounce or loop delay
+  // sendRocketState(rocketState); // TODO: implement
+  delay(50); // small debounce or loop delay
 }
