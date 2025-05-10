@@ -1,4 +1,3 @@
-
 const uint8_t PRE_ARM = 0b000000; // 0  decimal
 const uint8_t ABORT = 0b010101;   // 21 decimal
 const uint8_t ARMED = 0b100000;   // 32 decimal
@@ -67,6 +66,29 @@ DebouncedInput dev_M;
 // the debounce time; increase if the output flickers
 unsigned long debounceButtonDelay = 30;
 unsigned long debounceSwitchDelay = 30;
+
+// networking vars
+const byte mac_address[] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
+byte pkt[] = {
+    0xff, 0xee, 0xdd, 0xcc, 0xbb, 0xaa, // destination
+    0x11, 0x22, 0x33, 0x44, 0x55, 0x66, // source
+    0x63, 0xe4,                         // experimental ethertype
+    0xFF,                               // payload
+};
+
+uint8_t buffer[1514];
+uint32_t send_count = 0;
+Wiznet5500 w5500;
+
+void printMACAddress(const uint8_t address[6]) {
+  for (uint8_t i = 0; i < 6; ++i) {
+    printPaddedHex(address[i]);
+    if (i < 5)
+      Serial.print(':');
+  }
+  Serial.println();
+}
+
 
 void debounceButtonRead(DebouncedInput *input)
 {
@@ -294,6 +316,11 @@ void dev_mode_logic()
 // TODO: implement send rocket state
 void sendRocketState(uint8_t currRocketState)
 {
+  pkt[14] = currRocketState;
+  if (w5500.sendFrame(test_packet, sizeof(test_packet)) < 0) {
+    Serial.println("Failed to send packet " + send_count);
+  } 
+  ++send_count;
 }
 
 void setup()
@@ -332,6 +359,10 @@ void setup()
   launch_M = {PIN_LAUNCH_M, LOW, LOW, 0, null_mask};
   fueling_M = {PIN_FUELING_M, LOW, LOW, 0, null_mask};
   dev_M = {PIN_DEV_M, LOW, LOW, 0, null_mask};
+
+  Serial.println("[W5500MacRaw]");
+  printMACAddress(mac_address);
+  w5500.begin(mac_address);
 }
 
 void loop()
