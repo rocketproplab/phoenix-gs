@@ -27,17 +27,6 @@ enum MODE
 
 MODE operationMode;
 
-enum LAUNCH_MODE_ENUM
-{
-  PREARM_BTN,
-  ABORT_BTN,
-  ARM_ON,
-  ARM_OFF,
-  LAUNCH_BTN
-};
-
-LAUNCH_MODE_ENUM launchModePress;
-
 const int PIN_GN2_F = 13;
 const int PIN_LNG_F = 2;
 const int PIN_LOX_F = 3;
@@ -162,14 +151,25 @@ MODE getModePress(MODE PRE_MODE)
   }
   else if (launch_button)
   {
+    if (PRE_MODE != LAUNCH_MODE){
+      rocketState = PRE_ARM;
+    }
     return LAUNCH_MODE;
   }
   else if (fueling_button)
   {
+    if (PRE_MODE != FUELING_MODE)
+    {
+      rocketState = PRE_ARM;
+    }
     return FUELING_MODE;
   }
   else if (dev_button)
   {
+    if (PRE_MODE != DEV_MODE)
+    {
+      rocketState = PRE_ARM;
+    }
     return DEV_MODE;
   }
   else
@@ -178,7 +178,7 @@ MODE getModePress(MODE PRE_MODE)
   }
 }
 
-LAUNCH_MODE_ENUM getLaunchModePress(LAUNCH_MODE_ENUM PRE_MODE)
+void launch_mode_logic()
 {
   // read relevent switches/buttons
   debounceSwitchRead(&arm);
@@ -189,71 +189,32 @@ LAUNCH_MODE_ENUM getLaunchModePress(LAUNCH_MODE_ENUM PRE_MODE)
   unsigned int abort_button = abort_mission.currState;
   unsigned int launch_button = launch.currState;
 
-  if (abort_button){
-    return ABORT_BTN;
-  }
-  else if (arm_switch){
-    return 
-  }
-
-
-
-  // if (abort_button & launch_button)
-  // {
-  //   return PREARM_BTN;
-  // }
-  // else if (arm_switch)
-  // {
-  //   return ARM_ON;
-  // }
-  // else if (!arm_switch)
-  // {
-  //   return ARM_OFF;
-  // }
-  // else if (abort_button)
-  // {
-  //   return ABORT_BTN;
-  // }
-  // else if (launch_button)
-  // {
-  //   return LAUNCH_BTN;
-  // }
-  // else
-  // {
-    return PRE_MODE;
-  }
-}
-
-void launch_mode_logic()
-{
-  launchModePress = getLaunchModePress(launchModePress);
-
   // State machine for rocket
   switch (rocketState)
   {
   case PRE_ARM:
-    if (launchModePress == ABORT_BTN)
+    if (abort_button)
     {
       rocketState = ABORT;
     }
-    else if (launchModePress == ARM_ON)
+    else if (arm_switch)
     {
       rocketState = ARMED;
     }
     break;
 
   case ARMED:
-    if (launchModePress == ABORT_BTN)
+    if (abort_button)
     {
       rocketState = ABORT;
     }
-    else if (launchModePress == LAUNCH_BTN)
-    {
-      rocketState = LAUNCH;
-    }
-    else if (launchModePress == ARM_OFF)
+    else if (!arm_switch)
     {
       rocketState = PRE_ARM;
+    }
+    else if (launch_button)
+    {
+      rocketState = LAUNCH;
     }
     break;
 
@@ -261,7 +222,7 @@ void launch_mode_logic()
     // rocket is launching
     // in static fire: abort is possible
     // in launch: abort is not possible
-    if (launchModePress == ABORT_BTN)
+    if (abort_button)
     {
       rocketState = ABORT;
     }
@@ -343,7 +304,6 @@ void setup()
   rocketState = 0b000000;
 
   operationMode = NONE_MODE;
-  launchModePress = PREARM_BTN;
 
   // initialize all inputs:
   pinMode(PIN_GN2_F, INPUT_PULLUP);
