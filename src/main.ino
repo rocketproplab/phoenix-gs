@@ -11,6 +11,8 @@ const uint8_t lng_vent_mask = 0b000100;
 const uint8_t lox_flow_mask = 0b000010;
 const uint8_t lox_vent_mask = 0b000001;
 
+const uint8_t null_mask = 0b000000;
+
 // Current state of the rocket
 uint8_t rocketState;
 
@@ -57,6 +59,7 @@ struct DebouncedInput
   unsigned int currState;
   unsigned int lastState;
   unsigned long lastDebounceTime;
+  uint8_t mask;
 };
 
 DebouncedInput gn2Flow;
@@ -71,12 +74,6 @@ DebouncedInput launch;
 DebouncedInput launch_M;
 DebouncedInput fueling_M;
 DebouncedInput dev_M;
-
-struct switch_control
-{
-  DebouncedInput *input;
-  unsigned int mask;
-};
 
 // the debounce time; increase if the output flickers
 unsigned long debounceButtonDelay = 30;
@@ -192,28 +189,37 @@ LAUNCH_MODE_ENUM getLaunchModePress(LAUNCH_MODE_ENUM PRE_MODE)
   unsigned int abort_button = abort_mission.currState;
   unsigned int launch_button = launch.currState;
 
-  if (abort_button & launch_button)
-  {
-    return PREARM_BTN;
-  }
-  else if (arm_switch)
-  {
-    return ARM_ON;
-  }
-  else if (!arm_switch)
-  {
-    return ARM_OFF;
-  }
-  else if (abort_button)
-  {
+  if (abort_button){
     return ABORT_BTN;
   }
-  else if (launch_button)
-  {
-    return LAUNCH_BTN;
+  else if (arm_switch){
+    return 
   }
-  else
-  {
+
+
+
+  // if (abort_button & launch_button)
+  // {
+  //   return PREARM_BTN;
+  // }
+  // else if (arm_switch)
+  // {
+  //   return ARM_ON;
+  // }
+  // else if (!arm_switch)
+  // {
+  //   return ARM_OFF;
+  // }
+  // else if (abort_button)
+  // {
+  //   return ABORT_BTN;
+  // }
+  // else if (launch_button)
+  // {
+  //   return LAUNCH_BTN;
+  // }
+  // else
+  // {
     return PRE_MODE;
   }
 }
@@ -269,23 +275,21 @@ void launch_mode_logic()
 
 void fueling_mode_logic()
 {
+  DebouncedInput *valve_list[] = {&gn2Vent,
+                                  &lngVent,
+                                  &loxVent};
 
-  switch_control control_list[] = {
-      {&gn2Vent, gn2_vent_mask},
-      {&lngVent, lng_vent_mask},
-      {&loxVent, lox_vent_mask}};
-
-  for (switch_control item : control_list)
+  for (DebouncedInput *item : valve_list)
   {
-    debounceSwitchRead(item.input);
+    debounceSwitchRead(item);
 
-    if (item.input->currState)
+    if (item->currState)
     {
-      rocketState = openValve(rocketState, control_list->mask);
+      rocketState = openValve(rocketState, item->mask);
     }
     else
     {
-      rocketState = closeValve(rocketState, control_list->mask);
+      rocketState = closeValve(rocketState, item->mask);
     }
   }
 
@@ -297,29 +301,31 @@ void fueling_mode_logic()
 void dev_mode_logic()
 {
 
-  switch_control control_list[] = {
-      {&gn2Flow, gn2_flow_mask},
-      {&lngFlow, lng_flow_mask},
-      {&loxFlow, lox_flow_mask},
-      {&gn2Vent, gn2_vent_mask},
-      {&lngVent, lng_vent_mask},
-      {&loxVent, lox_vent_mask}};
+  DebouncedInput *valve_list[] = { &gn2Flow,
+                                   &lngFlow,
+                                   &loxFlow,
+                                   &gn2Vent,
+                                   &lngVent,
+                                   &loxVent };
 
-  for (switch_control item : control_list)
-  {
-    debounceSwitchRead(item.input);
-    Serial.println("Pin Number: ");
-    Serial.println(item.input->pin);
-    Serial.println("State: ");
-    Serial.println(item.input->currState);
+  for (DebouncedInput *item : valve_list)
+  { 
+    debounceSwitchRead(item);
+    // Serial.println("Pin Number: ");
+    // Serial.println(item.input->pin);
+    // Serial.println("State: ");
+    // Serial.println(item.input->currState);
 
-    if (item.input->currState)
+    if (item->currState)
     {
-      rocketState = openValve(rocketState, control_list->mask);
+      //Serial.println("Opening valve: ");
+      //Serial.println(control_list->mask);
+      rocketState = openValve(rocketState, item->mask);
     }
     else
     {
-      rocketState = closeValve(rocketState, control_list->mask);
+      //Serial.println("Closing valve: ");
+      rocketState = closeValve(rocketState, item->mask);
     }
   }
 }
@@ -353,18 +359,19 @@ void setup()
   pinMode(PIN_FUELING_M, INPUT_PULLUP);
   pinMode(PIN_DEV_M, INPUT_PULLUP);
 
-  gn2Flow = {PIN_GN2_F, LOW, LOW, 0};
-  lngFlow = {PIN_LNG_F, LOW, LOW, 0};
-  loxFlow = {PIN_LOX_F, LOW, LOW, 0};
-  gn2Vent = {PIN_GN2_V, LOW, LOW, 0};
-  lngVent = {PIN_LNG_V, LOW, LOW, 0};
-  loxVent = {PIN_LOX_V, LOW, LOW, 0};
-  arm = {PIN_ARM, LOW, LOW, 0};
-  abort_mission = {PIN_ABORT, LOW, LOW, 0};
-  launch = {PIN_LAUNCH, LOW, LOW, 0};
-  launch_M = {PIN_LAUNCH_M, LOW, LOW, 0};
-  fueling_M = {PIN_FUELING_M, LOW, LOW, 0};
-  dev_M = {PIN_DEV_M, LOW, LOW, 0};
+
+  gn2Flow = {PIN_GN2_F, LOW, LOW, 0, gn2_flow_mask};
+  lngFlow = {PIN_LNG_F, LOW, LOW, 0, lng_flow_mask};
+  loxFlow = {PIN_LOX_F, LOW, LOW, 0, lox_flow_mask};
+  gn2Vent = {PIN_GN2_V, LOW, LOW, 0, gn2_vent_mask};
+  lngVent = {PIN_LNG_V, LOW, LOW, 0, lng_vent_mask};
+  loxVent = {PIN_LOX_V, LOW, LOW, 0, lox_vent_mask};
+  arm = {PIN_ARM, LOW, LOW, 0, null_mask};
+  abort_mission = {PIN_ABORT, LOW, LOW, 0, null_mask};
+  launch = {PIN_LAUNCH, LOW, LOW, 0, null_mask};
+  launch_M = {PIN_LAUNCH_M, LOW, LOW, 0, null_mask};
+  fueling_M = {PIN_FUELING_M, LOW, LOW, 0, null_mask};
+  dev_M = {PIN_DEV_M, LOW, LOW, 0, null_mask};
 }
 
 void loop()
@@ -377,21 +384,21 @@ void loop()
   case LAUNCH_MODE:
     Serial.println("Launch Mode");
     Serial.println("Rocket State: ");
-    Serial.println(rocketState);
+    Serial.println(rocketState, BIN);
     launch_mode_logic();
     break;
 
   case FUELING_MODE:
     Serial.println("Fueling Mode");
     Serial.println("Rocket State: ");
-    Serial.println(rocketState);
+    Serial.println(rocketState, BIN);
     fueling_mode_logic();
     break;
 
   case DEV_MODE:
     Serial.println("Dev Mode");
     Serial.println("Rocket State: ");
-    Serial.println(rocketState);
+    Serial.println(rocketState, BIN);
     dev_mode_logic();
     break;
 
