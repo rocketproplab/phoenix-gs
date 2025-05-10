@@ -3,10 +3,10 @@
 
 // for LCD display
 #include <Wire.h>
-//#include <LiquidCrystal_I2C.h>
+// #include <LiquidCrystal_I2C.h>
 
 // Initialize the LCD object, set the LCD I2C address to 0x27 for a 20x4 display
-//LiquidCrystal_I2C lcd(0x27, 20, 4);
+// LiquidCrystal_I2C lcd(0x27, 20, 4);
 
 const uint8_t PRE_ARM = 0b000000; // 0  decimal
 const uint8_t ABORT = 0b010101;   // 21 decimal
@@ -328,6 +328,8 @@ void dev_mode_logic()
 // TODO: implement send rocket state
 void sendRocketState(uint8_t currRocketState)
 {
+
+  // Serial.println("sending signals");
   pkt[14] = currRocketState;
   if (w5500.sendFrame(pkt, sizeof(pkt)) < 0)
   {
@@ -404,7 +406,7 @@ void loop()
   // Serial.println("Running");
   operationMode = getModePress(operationMode);
   sendRocketState(rocketState);
-  //displatyRocketState();
+  // displatyRocketState();
 
   switch (operationMode)
   {
@@ -437,5 +439,5 @@ void loop()
   // TODO: implement sendRocketState that send
   //       rocketState to the flight computer
   // sendRocketState(rocketState); // TODO: implement
-   delay(50); // small debounce or loop delay
+  delay(50); // small debounce or loop delay
 }
