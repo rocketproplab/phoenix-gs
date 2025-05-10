@@ -1,3 +1,13 @@
+// for ethernet module
+#include "w5500.h"
+
+// for LCD display
+#include <Wire.h>
+//#include <LiquidCrystal_I2C.h>
+
+// Initialize the LCD object, set the LCD I2C address to 0x27 for a 20x4 display
+//LiquidCrystal_I2C lcd(0x27, 20, 4);
+
 const uint8_t PRE_ARM = 0b000000; // 0  decimal
 const uint8_t ABORT = 0b010101;   // 21 decimal
 const uint8_t ARMED = 0b100000;   // 32 decimal
@@ -26,15 +36,15 @@ enum MODE
 
 MODE operationMode;
 
-const int PIN_GN2_F = 13;
+const int PIN_GN2_F = 22;
 const int PIN_LNG_F = 2;
 const int PIN_LOX_F = 3;
 const int PIN_GN2_V = 4;
 const int PIN_LNG_V = 5;
 const int PIN_LOX_V = 6;
 const int PIN_ARM = 7;
-const int PIN_ABORT = 8;
-const int PIN_LAUNCH = 9;
+const int PIN_LAUNCH = 8;
+const int PIN_ABORT = 9;
 const int PIN_LAUNCH_M = 10;
 const int PIN_FUELING_M = 11;
 const int PIN_DEV_M = 12;
@@ -80,15 +90,16 @@ uint8_t buffer[1514];
 uint32_t send_count = 0;
 Wiznet5500 w5500;
 
-void printMACAddress(const uint8_t address[6]) {
-  for (uint8_t i = 0; i < 6; ++i) {
-    printPaddedHex(address[i]);
+void printMACAddress(const uint8_t address[6])
+{
+  for (uint8_t i = 0; i < 6; ++i)
+  {
+    // printPaddedHex(address[i]);
     if (i < 5)
       Serial.print(':');
   }
   Serial.println();
 }
-
 
 void debounceButtonRead(DebouncedInput *input)
 {
@@ -173,7 +184,8 @@ MODE getModePress(MODE PRE_MODE)
   }
   else if (launch_button)
   {
-    if (PRE_MODE != LAUNCH_MODE){
+    if (PRE_MODE != LAUNCH_MODE)
+    {
       rocketState = PRE_ARM;
     }
     return LAUNCH_MODE;
@@ -284,15 +296,15 @@ void fueling_mode_logic()
 void dev_mode_logic()
 {
 
-  DebouncedInput *valve_list[] = { &gn2Flow,
-                                   &lngFlow,
-                                   &loxFlow,
-                                   &gn2Vent,
-                                   &lngVent,
-                                   &loxVent };
+  DebouncedInput *valve_list[] = {&gn2Flow,
+                                  &lngFlow,
+                                  &loxFlow,
+                                  &gn2Vent,
+                                  &lngVent,
+                                  &loxVent};
 
   for (DebouncedInput *item : valve_list)
-  { 
+  {
     debounceSwitchRead(item);
     // Serial.println("Pin Number: ");
     // Serial.println(item.input->pin);
@@ -301,13 +313,13 @@ void dev_mode_logic()
 
     if (item->currState)
     {
-      //Serial.println("Opening valve: ");
-      //Serial.println(control_list->mask);
+      // Serial.println("Opening valve: ");
+      // Serial.println(control_list->mask);
       rocketState = openValve(rocketState, item->mask);
     }
     else
     {
-      //Serial.println("Closing valve: ");
+      // Serial.println("Closing valve: ");
       rocketState = closeValve(rocketState, item->mask);
     }
   }
@@ -317,11 +329,31 @@ void dev_mode_logic()
 void sendRocketState(uint8_t currRocketState)
 {
   pkt[14] = currRocketState;
-  if (w5500.sendFrame(test_packet, sizeof(test_packet)) < 0) {
+  if (w5500.sendFrame(pkt, sizeof(pkt)) < 0)
+  {
     Serial.println("Failed to send packet " + send_count);
-  } 
+  }
   ++send_count;
 }
+
+// void displatyRocketState()
+// {
+//   // Set cursor to the top left corner and print the string on the first row
+//   lcd.setCursor(0, 0);
+//   lcd.print("    Hello, world!    ");
+
+//   // Move to the second row and print the string
+//   lcd.setCursor(0, 1);
+//   lcd.print("   IIC/I2C LCD2004  ");
+
+//   // Move to the third row and print the string
+//   lcd.setCursor(0, 2);
+//   lcd.print("  20 cols, 4 rows   ");
+
+//   // Move to the fourth row and print the string
+//   lcd.setCursor(0, 3);
+//   lcd.print(" www.sunfounder.com ");
+// }
 
 void setup()
 {
@@ -346,7 +378,6 @@ void setup()
   pinMode(PIN_FUELING_M, INPUT_PULLUP);
   pinMode(PIN_DEV_M, INPUT_PULLUP);
 
-
   gn2Flow = {PIN_GN2_F, LOW, LOW, 0, gn2_flow_mask};
   lngFlow = {PIN_LNG_F, LOW, LOW, 0, lng_flow_mask};
   loxFlow = {PIN_LOX_F, LOW, LOW, 0, lox_flow_mask};
@@ -363,12 +394,17 @@ void setup()
   Serial.println("[W5500MacRaw]");
   printMACAddress(mac_address);
   w5500.begin(mac_address);
+
+  // lcd.init();      // Initialize the LCD
+  // lcd.backlight(); // Turn on the backlight
 }
 
 void loop()
 {
   // Serial.println("Running");
   operationMode = getModePress(operationMode);
+  sendRocketState(rocketState);
+  //displatyRocketState();
 
   switch (operationMode)
   {
@@ -401,5 +437,5 @@ void loop()
   // TODO: implement sendRocketState that send
   //       rocketState to the flight computer
   // sendRocketState(rocketState); // TODO: implement
-  delay(50); // small debounce or loop delay
+   delay(50); // small debounce or loop delay
 }
