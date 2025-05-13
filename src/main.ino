@@ -196,7 +196,7 @@ void debounceSwitchRead(DebouncedInput *input)
   if (reading != input->lastState)
   { input->lastDebounceTime = millis(); }
 
-  if ((millis() - input->lastDebounceTime) > debounceButtonDelay)
+  if ((millis() - input->lastDebounceTime) > debounceSwitchDelay)
   {
     if (reading != input->currState)
     {
