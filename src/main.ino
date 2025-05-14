@@ -45,19 +45,19 @@ const uint8_t null_mask = 0b0000000;
 // ─────────────────────────────────────────────────────────────────────────────
 //                                 Pin Mapping
 // ─────────────────────────────────────────────────────────────────────────────
-const int PIN_GN2_LNG_F = 22; // GN2 flow connected to LGN
-const int PIN_GN2_LOX_F = 23; // GN2 flow connected to LOX
-const int PIN_LNG_F     = 2;
-const int PIN_LOX_F     = 3;
-const int PIN_GN2_V     = 4;
-const int PIN_LNG_V     = 5;
-const int PIN_LOX_V     = 6;
-const int PIN_ARM       = 7;
-const int PIN_LAUNCH    = 8;
-const int PIN_ABORT     = 9;
-const int PIN_LAUNCH_M  = 10; // Launch mode
-const int PIN_FUELING_M = 11; // Fueling mode
-const int PIN_DEV_M     = 12; // Dev mode
+const int PIN_GN2_LNG_F = 2; // GN2 flow connected to LGN
+const int PIN_GN2_LOX_F = 3; // GN2 flow connected to LOX
+const int PIN_LNG_F     = 4;
+const int PIN_LOX_F     = 5;
+const int PIN_GN2_V     = 6;
+const int PIN_LNG_V     = 7;
+const int PIN_LOX_V     = 8;
+const int PIN_ARM       = 9;
+const int PIN_LAUNCH    = 10;
+const int PIN_ABORT     = 11;
+const int PIN_LAUNCH_M  = 14; // Launch mode
+const int PIN_FUELING_M = 15; // Fueling mode
+const int PIN_DEV_M     = 16; // Dev mode
 
 // ─────────────────────────────────────────────────────────────────────────────
 //                                  Typedefs

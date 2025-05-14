@@ -67,3 +67,7 @@ Each state has two valves: flow valve and vent valve
 # Launch Terminal Physical Specifications
 ## Ethernet
 [W5500 Ethernet LAN Network Module](https://www.amazon.com/HiLetgo-Ethernet-Network-Support-Microcontroller/dp/B0CDWX9VQ5)
+
+
+# Resource
+* https://github.com/njh/W5500MacRaw
