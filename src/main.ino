@@ -27,37 +27,37 @@ uint8_t rocketState;
 
 // Launch sequence encoding
 const uint8_t PRE_ARM = 0b0000000; // Safe: all valves closed
-const uint8_t ABORT   = 0b0010101; // Abort: open all vent valves
-const uint8_t ARMED   = 0b1100000; // Armed: ready to launch, waiting trigger
-const uint8_t LAUNCH  = 0b1101010; // Launch: ignition/flight started
+const uint8_t ABORT = 0b0010101;   // Abort: open all vent valves
+const uint8_t ARMED = 0b1100000;   // Armed: ready to launch, waiting trigger
+const uint8_t LAUNCH = 0b1101010;  // Launch: ignition/flight started
 
 // Individual valve masks
-const uint8_t gn2_lgn_flow_mask = 0b1000000;
+const uint8_t gn2_lng_flow_mask = 0b1000000;
 const uint8_t gn2_lox_flow_mask = 0b0100000;
-const uint8_t gn2_vent_mask     = 0b0010000;
-const uint8_t lng_flow_mask     = 0b0001000;
-const uint8_t lng_vent_mask     = 0b0000100;
-const uint8_t lox_flow_mask     = 0b0000010;
-const uint8_t lox_vent_mask     = 0b0000001;
+const uint8_t gn2_vent_mask = 0b0010000;
+const uint8_t lng_flow_mask = 0b0001000;
+const uint8_t lng_vent_mask = 0b0000100;
+const uint8_t lox_flow_mask = 0b0000010;
+const uint8_t lox_vent_mask = 0b0000001;
 
 const uint8_t null_mask = 0b0000000;
 
 // ─────────────────────────────────────────────────────────────────────────────
 //                                 Pin Mapping
 // ─────────────────────────────────────────────────────────────────────────────
-const int PIN_GN2_LNG_F = 2; // GN2 flow connected to LGN
-const int PIN_GN2_LOX_F = 3; // GN2 flow connected to LOX
-const int PIN_LNG_F     = 4;
-const int PIN_LOX_F     = 5;
-const int PIN_GN2_V     = 6;
-const int PIN_LNG_V     = 7;
-const int PIN_LOX_V     = 8;
-const int PIN_ARM       = 9;
-const int PIN_LAUNCH    = 10;
-const int PIN_ABORT     = 11;
-const int PIN_LAUNCH_M  = 14; // Launch mode
-const int PIN_FUELING_M = 15; // Fueling mode
-const int PIN_DEV_M     = 16; // Dev mode
+const int PIN_GN2_LNG_F = 48; // GN2 flow connected to LNG
+const int PIN_GN2_LOX_F = 19; // GN2 flow connected to LOX
+const int PIN_LNG_F = 49;
+const int PIN_LOX_F = 47;
+const int PIN_GN2_V = 46;
+const int PIN_LNG_V = 45;
+const int PIN_LOX_V = 44;
+const int PIN_ARM = 18;
+const int PIN_LAUNCH = 20;
+const int PIN_ABORT = 26;    // this is a pull down???
+const int PIN_LAUNCH_M = 8;  // Launch mode
+const int PIN_FUELING_M = 9; // Fueling mode
+const int PIN_DEV_M = 10;    // Dev mode
 
 // ─────────────────────────────────────────────────────────────────────────────
 //                                  Typedefs
@@ -69,8 +69,7 @@ const int PIN_DEV_M     = 16; // Dev mode
  * and implements a simple time‑based debounce; state only changes if the new
  * level remains stable for `debounceButtonDelay` ms.
  */
-struct DebouncedInput
-{
+struct DebouncedInput {
   unsigned int pin;
   unsigned int currState;
   unsigned int lastState;
@@ -93,24 +92,26 @@ unsigned long debounceSwitchDelay = 30; // for switches
 // ─────────────────────────────────────────────────────────────────────────────
 //                              Operating Modes
 // ─────────────────────────────────────────────────────────────────────────────
-enum MODE
-{
-  NONE_MODE,
-  LAUNCH_MODE,
-  FUELING_MODE,
-  DEV_MODE
-};
+enum MODE { NONE_MODE, LAUNCH_MODE, FUELING_MODE, DEV_MODE };
 MODE operationMode = NONE_MODE;
 
 // ─────────────────────────────────────────────────────────────────────────────
 //                           Ethernet (MAC‑RAW) Setup
 // ─────────────────────────────────────────────────────────────────────────────
-const byte mac_address[] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
+// first byte 0x02 = locally‑administered, unicast
+const uint8_t MAC_GROUND_STATION[6] = {0x02, 0x47, 0x53,
+                                       0x00, 0x00, 0x01}; // GS:  ground station
+const uint8_t MAC_RELIEF_VALVE[6] = {0x02, 0x52, 0x56,
+                                     0x00, 0x00, 0x02}; // RV:  relief valve
+const uint8_t MAC_FLOW_VALVE[6] = {0x02, 0x46, 0x4C,
+                                   0x00, 0x00, 0x03}; // FL:  flow valve
+const uint8_t MAC_SENSOR_GIGA[6] = {0x02, 0x53, 0x49,
+                                    0x00, 0x00, 0x04}; // SI:  sensor interface
 byte pkt[] = {
     0xff, 0xee, 0xdd, 0xcc, 0xbb, 0xaa, // destination
     0x11, 0x22, 0x33, 0x44, 0x55, 0x66, // source
     0x63, 0xe4,                         // experimental ethertype
-    0xFF,                               // payload
+    0x00,                               // payload
 };
 uint8_t buffer[1514];
 uint32_t send_count = 0;
@@ -125,10 +126,8 @@ Wiznet5500 w5500;
  * @param address  Pointer to 6‑byte array containing the MAC address.
  * @return void
  */
-void printMACAddress(const uint8_t address[6])
-{
-  for (uint8_t i = 0; i < 6; ++i)
-  {
+void printMACAddress(const uint8_t address[6]) {
+  for (uint8_t i = 0; i < 6; ++i) {
     // printPaddedHex(address[i]);
     if (i < 5)
       Serial.print(':');
@@ -142,8 +141,9 @@ void printMACAddress(const uint8_t address[6])
  * @param valve        Bit mask of the valve to open.
  * @return New packed state with valve bit set.
  */
-uint8_t openValve(uint8_t rocket_state, uint8_t valve)
-{ return rocket_state | valve; }
+uint8_t openValve(uint8_t rocket_state, uint8_t valve) {
+  return rocket_state | valve;
+}
 
 /**
  * @brief  Clear a bit in rocket_state to close a valve.
@@ -151,8 +151,9 @@ uint8_t openValve(uint8_t rocket_state, uint8_t valve)
  * @param valve        Bit mask of the valve to close.
  * @return New packed state with valve bit cleared.
  */
-uint8_t closeValve(uint8_t rocket_state, uint8_t valve)
-{ return rocket_state & ~valve; }
+uint8_t closeValve(uint8_t rocket_state, uint8_t valve) {
+  return rocket_state & ~valve;
+}
 
 /**
  * @brief  Debounce a momentary push‑button (PULL-UP Wiring).
@@ -162,21 +163,43 @@ uint8_t closeValve(uint8_t rocket_state, uint8_t valve)
  * @param input Pointer to DebouncedInput describing the button.
  * @return void
  */
-void debounceButtonRead(DebouncedInput *input)
-{
+void debounceButtonRead(DebouncedInput *input) {
   int reading = digitalRead(input->pin);
   reading = (reading == LOW) ? HIGH : LOW; // convert active‑LOW → logic‑high
 
-  if (reading != input->lastState)
-  { input->lastDebounceTime = millis(); }
+  if (reading != input->lastState) {
+    input->lastDebounceTime = millis();
+  }
 
-  if ((millis() - input->lastDebounceTime) > debounceButtonDelay)
-  {
-    if (reading != input->currState)
-    {
+  if ((millis() - input->lastDebounceTime) > debounceButtonDelay) {
+    if (reading != input->currState) {
       input->currState = reading;
     }
   }
+  input->lastState = reading;
+}
+
+/**
+ * @brief  Debounce the abort push-button (active-HIGH wiring).
+ *
+ * Updates the `currState` field in input when a stable edge is detected.
+ * Here, pressing the button drives the pin HIGH (and releasing drives it LOW).
+ *
+ * @param input Pointer to the DebouncedInput describing the abort button.
+ */
+void debounceAbortRead(DebouncedInput *input) {
+  int reading = digitalRead(input->pin);
+
+  if (reading != input->lastState) {
+    input->lastDebounceTime = millis();
+  }
+
+  if ((millis() - input->lastDebounceTime) > debounceButtonDelay) {
+    if (reading != input->currState) {
+      input->currState = reading;
+    }
+  }
+
   input->lastState = reading;
 }
 
@@ -188,18 +211,16 @@ void debounceButtonRead(DebouncedInput *input)
  * @param input Pointer to DebouncedInput describing the button.
  * @return void
  */
-void debounceSwitchRead(DebouncedInput *input)
-{
+void debounceSwitchRead(DebouncedInput *input) {
   int reading = digitalRead(input->pin);
   reading = (reading == LOW) ? HIGH : LOW; // convert active‑LOW → logic‑high
 
-  if (reading != input->lastState)
-  { input->lastDebounceTime = millis(); }
+  if (reading != input->lastState) {
+    input->lastDebounceTime = millis();
+  }
 
-  if ((millis() - input->lastDebounceTime) > debounceSwitchDelay)
-  {
-    if (reading != input->currState)
-    {
+  if ((millis() - input->lastDebounceTime) > debounceSwitchDelay) {
+    if (reading != input->currState) {
       input->currState = reading;
     }
   }
@@ -216,8 +237,7 @@ void debounceSwitchRead(DebouncedInput *input)
  * @param PRE_MODE Previously active mode.
  * @return The (possibly updated) MODE value.
  */
-MODE getModePress(MODE PRE_MODE)
-{
+MODE getModePress(MODE PRE_MODE) {
   // read relevent switches/buttons
   debounceButtonRead(&launch_M);
   debounceButtonRead(&fueling_M);
@@ -227,28 +247,22 @@ MODE getModePress(MODE PRE_MODE)
   unsigned int fueling_button = fueling_M.currState;
   unsigned int dev_button = dev_M.currState;
 
-  if (launch_button + fueling_button + dev_button > 1)
-  {
+  if (launch_button + fueling_button + dev_button > 1) {
     // Invalid: multiple selections → stay in previous mode
     return PRE_MODE;
-  }
-  else if (launch_button)
-  {
-    if (PRE_MODE != LAUNCH_MODE)      rocketState = PRE_ARM;
+  } else if (launch_button) {
+    if (PRE_MODE != LAUNCH_MODE)
+      rocketState = PRE_ARM;
     return LAUNCH_MODE;
-  }
-  else if (fueling_button)
-  {
-    if (PRE_MODE != FUELING_MODE)     rocketState = PRE_ARM;
+  } else if (fueling_button) {
+    if (PRE_MODE != FUELING_MODE)
+      rocketState = PRE_ARM;
     return FUELING_MODE;
-  }
-  else if (dev_button)
-  {
-    if (PRE_MODE != DEV_MODE)         rocketState = PRE_ARM;
+  } else if (dev_button) {
+    if (PRE_MODE != DEV_MODE)
+      rocketState = PRE_ARM;
     return DEV_MODE;
-  }
-  else
-  {
+  } else {
     // No buttons pressed → keep mode
     return PRE_MODE;
   }
@@ -266,41 +280,45 @@ MODE getModePress(MODE PRE_MODE)
  *
  * @return void
  */
-void launch_mode_logic()
-{
+void launch_mode_logic() {
   // Read selectors
   debounceSwitchRead(&arm);
-  debounceButtonRead(&abort_mission);
+  debounceAbortRead(&abort_mission);
   debounceButtonRead(&launch);
 
-  unsigned int arm_switch    = arm.currState;
-  unsigned int abort_button  = abort_mission.currState;
+  unsigned int arm_switch = arm.currState;
+  unsigned int abort_button = abort_mission.currState;
   unsigned int launch_button = launch.currState;
 
   // State machine for rocket
-  switch (rocketState)
-  {
-    case PRE_ARM:
-      if (abort_button)       rocketState = ABORT;
-      else if (arm_switch)    rocketState = ARMED;
-      break;
+  switch (rocketState) {
+  case PRE_ARM:
+    if (abort_button)
+      rocketState = ABORT;
+    else if (arm_switch)
+      rocketState = ARMED;
+    break;
 
-    case ARMED:
-      if (abort_button)       rocketState = ABORT;
-      else if (!arm_switch)   rocketState = PRE_ARM;
-      else if (launch_button) rocketState = LAUNCH;
-      break;
+  case ARMED:
+    if (abort_button)
+      rocketState = ABORT;
+    else if (!arm_switch)
+      rocketState = PRE_ARM;
+    else if (launch_button)
+      rocketState = LAUNCH;
+    break;
 
-    case LAUNCH:
-      // In launch state abort may still be possible
-      // In static fire: abort is possible
-      // In launch: abort is not possible
-      if (abort_button)       rocketState = ABORT;
-      break;
+  case LAUNCH:
+    // In launch state abort may still be possible
+    // In static fire: abort is possible
+    // In launch: abort is not possible
+    if (abort_button)
+      rocketState = ABORT;
+    break;
 
-    case ABORT:
-      // Latched until system reset
-      break;
+  case ABORT:
+    rocketState = ABORT; // Latched until system reset
+    break;
   }
 }
 
@@ -311,23 +329,20 @@ void launch_mode_logic()
  *
  * @return void
  */
-void fueling_mode_logic()
-{
-  DebouncedInput *valve_list[] = {&gn2Vent,
-                                  &lngVent,
-                                  &loxVent};
+void fueling_mode_logic() {
+  DebouncedInput *valve_list[] = {&gn2Vent, &lngVent, &loxVent};
 
-  for (DebouncedInput *item : valve_list)
-  {
+  for (DebouncedInput *item : valve_list) {
     debounceSwitchRead(item);
 
-    if (item->currState)
-    { rocketState = openValve(rocketState, item->mask); }
-    else
-    { rocketState = closeValve(rocketState, item->mask); }
+    if (item->currState) {
+      rocketState = openValve(rocketState, item->mask);
+    } else {
+      rocketState = closeValve(rocketState, item->mask);
+    }
   }
 
-  rocketState = closeValve(rocketState, gn2_lgn_flow_mask);
+  rocketState = closeValve(rocketState, gn2_lng_flow_mask);
   rocketState = closeValve(rocketState, gn2_lox_flow_mask);
   rocketState = closeValve(rocketState, lng_flow_mask);
   rocketState = closeValve(rocketState, lox_flow_mask);
@@ -340,25 +355,20 @@ void fueling_mode_logic()
  *
  * @return void
  */
-void dev_mode_logic()
-{
+void dev_mode_logic() {
 
-  DebouncedInput *valve_list[] = {&gn2_lngFlow,
-                                  &gn2_loxFlow,
-                                  &lngFlow,
-                                  &loxFlow,
-                                  &gn2Vent,
-                                  &lngVent,
+  DebouncedInput *valve_list[] = {&gn2_lngFlow, &gn2_loxFlow, &lngFlow,
+                                  &loxFlow,     &gn2Vent,     &lngVent,
                                   &loxVent};
 
-  for (DebouncedInput *item : valve_list)
-  {
+  for (DebouncedInput *item : valve_list) {
     debounceSwitchRead(item);
 
-    if (item->currState)
-    { rocketState = openValve(rocketState, item->mask); }
-    else
-    { rocketState = closeValve(rocketState, item->mask); }
+    if (item->currState) {
+      rocketState = openValve(rocketState, item->mask);
+    } else {
+      rocketState = closeValve(rocketState, item->mask);
+    }
   }
 }
 
@@ -371,16 +381,22 @@ void dev_mode_logic()
  * @param currRocketState 8‑bit packed state word to be transmitted.
  * @return void
  */
-void sendRocketState(uint8_t currRocketState)
-{
-
-  // Serial.println("sending signals");
+void sendRocketState(uint8_t currRocketState) {
   pkt[14] = currRocketState;
-  if (w5500.sendFrame(pkt, sizeof(pkt)) < 0)
-  {
-    Serial.println("Failed to send packet " + send_count);
+  // --- 1) Relief-valve Arduino ---
+  memcpy(pkt, MAC_RELIEF_VALVE, 6);       // destination
+  memcpy(pkt + 6, MAC_GROUND_STATION, 6); // source
+  if (w5500.sendFrame(pkt, sizeof(pkt)) < 0) {
+    Serial.println(F("TX-error → relief valve"));
   }
-  ++send_count;
+
+  // --- 2) Flow-valve Arduino ---
+  memcpy(pkt, MAC_FLOW_VALVE, 6); // destination
+  if (w5500.sendFrame(pkt, sizeof(pkt)) < 0) {
+    Serial.println(F("TX-error → flow valve"));
+  }
+
+  send_count += 2;
 }
 
 // void displatyRocketState()
@@ -412,48 +428,47 @@ void sendRocketState(uint8_t currRocketState)
  * W5500 Ethernet controller.
  * @return void
  */
-void setup()
-{
+void setup() {
   Serial.begin(9600);
 
   // Start in safe state
   rocketState = PRE_ARM;
 
   // Configure all control inputs as pull‑ups (active‑LOW)
-  pinMode(PIN_GN2_LNG_F,  INPUT_PULLUP);
-  pinMode(PIN_GN2_LOX_F,  INPUT_PULLUP);
-  pinMode(PIN_LNG_F,      INPUT_PULLUP);
-  pinMode(PIN_LOX_F,      INPUT_PULLUP);
-  pinMode(PIN_GN2_V,      INPUT_PULLUP);
-  pinMode(PIN_LNG_V,      INPUT_PULLUP);
-  pinMode(PIN_LOX_V,      INPUT_PULLUP);
-  pinMode(PIN_ARM,        INPUT_PULLUP);
-  pinMode(PIN_ABORT,      INPUT_PULLUP);
-  pinMode(PIN_LAUNCH,     INPUT_PULLUP);
-  pinMode(PIN_LAUNCH_M,   INPUT_PULLUP);
-  pinMode(PIN_FUELING_M,  INPUT_PULLUP);
-  pinMode(PIN_DEV_M,      INPUT_PULLUP);
+  pinMode(PIN_GN2_LNG_F, INPUT_PULLUP);
+  pinMode(PIN_GN2_LOX_F, INPUT_PULLUP);
+  pinMode(PIN_LNG_F, INPUT_PULLUP);
+  pinMode(PIN_LOX_F, INPUT_PULLUP);
+  pinMode(PIN_GN2_V, INPUT_PULLUP);
+  pinMode(PIN_LNG_V, INPUT_PULLUP);
+  pinMode(PIN_LOX_V, INPUT_PULLUP);
+  pinMode(PIN_ARM, INPUT_PULLUP);
+  pinMode(PIN_ABORT, INPUT_PULLUP);
+  pinMode(PIN_LAUNCH, INPUT_PULLUP);
+  pinMode(PIN_LAUNCH_M, INPUT_PULLUP);
+  pinMode(PIN_FUELING_M, INPUT_PULLUP);
+  pinMode(PIN_DEV_M, INPUT_PULLUP);
 
   // Map physical pins to DebouncedInput objects
-  gn2_lngFlow  = { PIN_GN2_LNG_F, LOW, LOW, 0, gn2_lgn_flow_mask };
-  gn2_loxFlow  = { PIN_GN2_LOX_F, LOW, LOW, 0, gn2_lox_flow_mask };
-  lngFlow      = { PIN_LNG_F,     LOW, LOW, 0, lng_flow_mask     };
-  loxFlow      = { PIN_LOX_F,     LOW, LOW, 0, lox_flow_mask     };
-  gn2Vent      = { PIN_GN2_V,     LOW, LOW, 0, gn2_vent_mask     };
-  lngVent      = { PIN_LNG_V,     LOW, LOW, 0, lng_vent_mask     };
-  loxVent      = { PIN_LOX_V,     LOW, LOW, 0, lox_vent_mask     };
-  arm          = { PIN_ARM,       LOW, LOW, 0, null_mask         };
-  abort_mission= { PIN_ABORT,     LOW, LOW, 0, null_mask         };
-  launch       = { PIN_LAUNCH,    LOW, LOW, 0, null_mask         };
-  launch_M     = { PIN_LAUNCH_M,  LOW, LOW, 0, null_mask         };
-  fueling_M    = { PIN_FUELING_M, LOW, LOW, 0, null_mask         };
-  dev_M        = { PIN_DEV_M,     LOW, LOW, 0, null_mask         };
+  gn2_lngFlow = {PIN_GN2_LNG_F, LOW, LOW, 0, gn2_lng_flow_mask};
+  gn2_loxFlow = {PIN_GN2_LOX_F, LOW, LOW, 0, gn2_lox_flow_mask};
+  lngFlow = {PIN_LNG_F, LOW, LOW, 0, lng_flow_mask};
+  loxFlow = {PIN_LOX_F, LOW, LOW, 0, lox_flow_mask};
+  gn2Vent = {PIN_GN2_V, LOW, LOW, 0, gn2_vent_mask};
+  lngVent = {PIN_LNG_V, LOW, LOW, 0, lng_vent_mask};
+  loxVent = {PIN_LOX_V, LOW, LOW, 0, lox_vent_mask};
+  arm = {PIN_ARM, LOW, LOW, 0, null_mask};
+  abort_mission = {PIN_ABORT, LOW, LOW, 0, null_mask};
+  launch = {PIN_LAUNCH, LOW, LOW, 0, null_mask};
+  launch_M = {PIN_LAUNCH_M, LOW, LOW, 0, null_mask};
+  fueling_M = {PIN_FUELING_M, LOW, LOW, 0, null_mask};
+  dev_M = {PIN_DEV_M, LOW, LOW, 0, null_mask};
 
   // Bring up Ethernet in MAC‑RAW mode
   Serial.println("Ethernet Module Starting...");
   Serial.println("[W5500MacRaw]");
-  printMACAddress(mac_address);
-  w5500.begin(mac_address);
+  printMACAddress(MAC_GROUND_STATION);
+  w5500.begin(MAC_GROUND_STATION);
   Serial.println("Ethernet Start Success...");
 
   // lcd.init();      // Initialize the LCD
@@ -471,13 +486,10 @@ void setup()
  * 3. Send the packed rocket state to the flight computer.
  * @return void
  */
-void loop()
-{
+void loop() {
   operationMode = getModePress(operationMode); // Mode select
-  sendRocketState(rocketState);
 
-  switch (operationMode)
-  {
+  switch (operationMode) {
   case LAUNCH_MODE:
     Serial.println("Launch Mode; State = " + String(rocketState, BIN));
     launch_mode_logic();
@@ -498,5 +510,6 @@ void loop()
     break;
   }
 
+  sendRocketState(rocketState);
   delay(50);
 }
