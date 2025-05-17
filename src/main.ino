@@ -15,6 +15,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 #include "w5500.h" // WIZnet W5500 Ethernet MAC/PHY driver (MAC‑RAW mode)
 #include <Wire.h>  // I2C bus (LCD display, not currently enabled)
+#include <LiquidCrystal_I2C.h>
+LiquidCrystal_I2C lcd(0x27, 20, 4);
 
 // #include <LiquidCrystal_I2C.h>
 // LiquidCrystal_I2C lcd(0x27, 20, 4);
@@ -53,7 +55,7 @@ const int PIN_GN2_V = 46;
 const int PIN_LNG_V = 45;
 const int PIN_LOX_V = 44;
 const int PIN_ARM = 18;
-const int PIN_LAUNCH = 20;
+const int PIN_LAUNCH = 17;
 const int PIN_ABORT = 26;    // this is a pull down???
 const int PIN_LAUNCH_M = 8;  // Launch mode
 const int PIN_FUELING_M = 9; // Fueling mode
@@ -69,7 +71,8 @@ const int PIN_DEV_M = 10;    // Dev mode
  * and implements a simple time‑based debounce; state only changes if the new
  * level remains stable for `debounceButtonDelay` ms.
  */
-struct DebouncedInput {
+struct DebouncedInput
+{
   unsigned int pin;
   unsigned int currState;
   unsigned int lastState;
@@ -92,7 +95,13 @@ unsigned long debounceSwitchDelay = 30; // for switches
 // ─────────────────────────────────────────────────────────────────────────────
 //                              Operating Modes
 // ─────────────────────────────────────────────────────────────────────────────
-enum MODE { NONE_MODE, LAUNCH_MODE, FUELING_MODE, DEV_MODE };
+enum MODE
+{
+  NONE_MODE,
+  LAUNCH_MODE,
+  FUELING_MODE,
+  DEV_MODE
+};
 MODE operationMode = NONE_MODE;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -126,8 +135,10 @@ Wiznet5500 w5500;
  * @param address  Pointer to 6‑byte array containing the MAC address.
  * @return void
  */
-void printMACAddress(const uint8_t address[6]) {
-  for (uint8_t i = 0; i < 6; ++i) {
+void printMACAddress(const uint8_t address[6])
+{
+  for (uint8_t i = 0; i < 6; ++i)
+  {
     // printPaddedHex(address[i]);
     if (i < 5)
       Serial.print(':');
@@ -141,7 +152,8 @@ void printMACAddress(const uint8_t address[6]) {
  * @param valve        Bit mask of the valve to open.
  * @return New packed state with valve bit set.
  */
-uint8_t openValve(uint8_t rocket_state, uint8_t valve) {
+uint8_t openValve(uint8_t rocket_state, uint8_t valve)
+{
   return rocket_state | valve;
 }
 
@@ -151,7 +163,8 @@ uint8_t openValve(uint8_t rocket_state, uint8_t valve) {
  * @param valve        Bit mask of the valve to close.
  * @return New packed state with valve bit cleared.
  */
-uint8_t closeValve(uint8_t rocket_state, uint8_t valve) {
+uint8_t closeValve(uint8_t rocket_state, uint8_t valve)
+{
   return rocket_state & ~valve;
 }
 
@@ -163,16 +176,20 @@ uint8_t closeValve(uint8_t rocket_state, uint8_t valve) {
  * @param input Pointer to DebouncedInput describing the button.
  * @return void
  */
-void debounceButtonRead(DebouncedInput *input) {
+void debounceButtonRead(DebouncedInput *input)
+{
   int reading = digitalRead(input->pin);
   reading = (reading == LOW) ? HIGH : LOW; // convert active‑LOW → logic‑high
 
-  if (reading != input->lastState) {
+  if (reading != input->lastState)
+  {
     input->lastDebounceTime = millis();
   }
 
-  if ((millis() - input->lastDebounceTime) > debounceButtonDelay) {
-    if (reading != input->currState) {
+  if ((millis() - input->lastDebounceTime) > debounceButtonDelay)
+  {
+    if (reading != input->currState)
+    {
       input->currState = reading;
     }
   }
@@ -187,15 +204,19 @@ void debounceButtonRead(DebouncedInput *input) {
  *
  * @param input Pointer to the DebouncedInput describing the abort button.
  */
-void debounceAbortRead(DebouncedInput *input) {
+void debounceAbortRead(DebouncedInput *input)
+{
   int reading = digitalRead(input->pin);
 
-  if (reading != input->lastState) {
+  if (reading != input->lastState)
+  {
     input->lastDebounceTime = millis();
   }
 
-  if ((millis() - input->lastDebounceTime) > debounceButtonDelay) {
-    if (reading != input->currState) {
+  if ((millis() - input->lastDebounceTime) > debounceButtonDelay)
+  {
+    if (reading != input->currState)
+    {
       input->currState = reading;
     }
   }
@@ -211,16 +232,20 @@ void debounceAbortRead(DebouncedInput *input) {
  * @param input Pointer to DebouncedInput describing the button.
  * @return void
  */
-void debounceSwitchRead(DebouncedInput *input) {
+void debounceSwitchRead(DebouncedInput *input)
+{
   int reading = digitalRead(input->pin);
   reading = (reading == LOW) ? HIGH : LOW; // convert active‑LOW → logic‑high
 
-  if (reading != input->lastState) {
+  if (reading != input->lastState)
+  {
     input->lastDebounceTime = millis();
   }
 
-  if ((millis() - input->lastDebounceTime) > debounceSwitchDelay) {
-    if (reading != input->currState) {
+  if ((millis() - input->lastDebounceTime) > debounceSwitchDelay)
+  {
+    if (reading != input->currState)
+    {
       input->currState = reading;
     }
   }
@@ -237,7 +262,8 @@ void debounceSwitchRead(DebouncedInput *input) {
  * @param PRE_MODE Previously active mode.
  * @return The (possibly updated) MODE value.
  */
-MODE getModePress(MODE PRE_MODE) {
+MODE getModePress(MODE PRE_MODE)
+{
   // read relevent switches/buttons
   debounceButtonRead(&launch_M);
   debounceButtonRead(&fueling_M);
@@ -247,24 +273,121 @@ MODE getModePress(MODE PRE_MODE) {
   unsigned int fueling_button = fueling_M.currState;
   unsigned int dev_button = dev_M.currState;
 
-  if (launch_button + fueling_button + dev_button > 1) {
+  if (launch_button + fueling_button + dev_button > 1)
+  {
     // Invalid: multiple selections → stay in previous mode
     return PRE_MODE;
-  } else if (launch_button) {
+  }
+  else if (launch_button)
+  {
     if (PRE_MODE != LAUNCH_MODE)
+    {
       rocketState = PRE_ARM;
+      LCD_LaunchMode();
+    }
     return LAUNCH_MODE;
-  } else if (fueling_button) {
+  }
+  else if (fueling_button)
+  {
     if (PRE_MODE != FUELING_MODE)
+    {
+      LCD_DevAndFueling(1);
       rocketState = PRE_ARM;
+    }
     return FUELING_MODE;
-  } else if (dev_button) {
+  }
+  else if (dev_button)
+  {
     if (PRE_MODE != DEV_MODE)
+    {
+      LCD_DevAndFueling(0);
       rocketState = PRE_ARM;
+    }
     return DEV_MODE;
-  } else {
+  }
+  else
+  {
     // No buttons pressed → keep mode
     return PRE_MODE;
+  }
+}
+
+void LCD_DevAndFueling(int mode)
+{
+
+  /* ---------- 1. Prepare the state list ---------- */
+  DebouncedInput *valve_list[] = {
+      &gn2_lngFlow, &gn2Vent, &gn2_loxFlow, &lngVent, &lngFlow, &loxVent, &loxFlow};
+
+  /* ---------- 2. Prepare names (index 0 is the Dev-Mode header) ---------- */
+  char **itemNames;
+
+  const char *itemNames_Dev[8] = {
+      "DEV MODE", "G2G-F", "GN2-V", "G2X-F", "LNG-V", "LNG-F", "LOX-V", "LOX-F"};
+
+  const char *itemNames_Fueling[8] = {
+      "FUEL MODE", "G2G-F", "GN2-V", "G2X-F", "LNG-V", "LNG-F", "LOX-V", "LOX-F"};
+
+  // Decide on the mode to operate on
+  if (mode == 0)
+  {
+    itemNames = itemNames_Dev;
+  }
+  else
+  {
+    itemNames = itemNames_Fueling;
+  }
+
+  /* ---------- 3. Draw the table: two cells (10 cols) per row ---------- */
+  lcd.clear(); // wipe previous frame
+  for (uint8_t i = 0; i < 8; ++i)
+  {
+    uint8_t row = i / 2;        // rows 0-3
+    uint8_t col = (i % 2) * 10; // 0 or 10
+    lcd.setCursor(col, row);
+
+    if (i == 0)
+    {                          // cell 0,0 → mode name
+      lcd.print(itemNames[0]); // fits inside 10-char cell
+      continue;                // nothing else on this cell
+    }
+
+    lcd.print(itemNames[i]); // valve label
+    lcd.print(':');
+
+    // i-1 maps to valve_list index (0-6)
+    lcd.print((valve_list[i - 1]->mask & rocketState) ? "ON " : "OFF");
+  }
+}
+
+void LCD_LaunchMode()
+{
+  lcd.clear(); // wipe previous frame
+  lcd.setCursor(0, 0);
+  lcd.print("  LAUNCH SEQUENCE  ");
+
+  // determing the launch state
+  if (PRE_ARM == rocketState)
+  {
+    lcd.setCursor(0, 1);
+    lcd.print("    PRE ARM MODE   ");
+  }
+  else if (ABORT == rocketState)
+  {
+    lcd.setCursor(0, 1);
+    lcd.print("   MISSION ABORT!  ");
+  }
+  else if (ARMED == rocketState)
+  {
+    lcd.setCursor(0, 1);
+    lcd.print("      ARM MODE     ");
+  }
+  else if (LAUNCH == rocketState)
+  {
+    lcd.setCursor(0, 1);
+    lcd.print("  ROCKET LAUNCHING! ");
+    lcd.setCursor(0, 3);
+    lcd.print("Ad Astra Per Aspera!");
   }
 }
 
@@ -280,7 +403,10 @@ MODE getModePress(MODE PRE_MODE) {
  *
  * @return void
  */
-void launch_mode_logic() {
+void launch_mode_logic()
+{
+  uint8_t initial_rocketState = rocketState;
+
   // Read selectors
   debounceSwitchRead(&arm);
   debounceAbortRead(&abort_mission);
@@ -291,7 +417,8 @@ void launch_mode_logic() {
   unsigned int launch_button = launch.currState;
 
   // State machine for rocket
-  switch (rocketState) {
+  switch (rocketState)
+  {
   case PRE_ARM:
     if (abort_button)
       rocketState = ABORT;
@@ -320,6 +447,12 @@ void launch_mode_logic() {
     rocketState = ABORT; // Latched until system reset
     break;
   }
+
+  // Refresh LCD display
+  if (initial_rocketState != rocketState)
+  {
+    LCD_LaunchMode();
+  }
 }
 
 /**
@@ -329,15 +462,24 @@ void launch_mode_logic() {
  *
  * @return void
  */
-void fueling_mode_logic() {
-  DebouncedInput *valve_list[] = {&gn2Vent, &lngVent, &loxVent};
+void fueling_mode_logic()
+{
+  uint8_t initial_rocketState = rocketState;
 
-  for (DebouncedInput *item : valve_list) {
+  DebouncedInput *valve_list[] = {&gn2Vent,
+                                  &lngVent,
+                                  &loxVent};
+
+  for (DebouncedInput *item : valve_list)
+  {
     debounceSwitchRead(item);
 
-    if (item->currState) {
+    if (item->currState)
+    {
       rocketState = openValve(rocketState, item->mask);
-    } else {
+    }
+    else
+    {
       rocketState = closeValve(rocketState, item->mask);
     }
   }
@@ -346,6 +488,12 @@ void fueling_mode_logic() {
   rocketState = closeValve(rocketState, gn2_lox_flow_mask);
   rocketState = closeValve(rocketState, lng_flow_mask);
   rocketState = closeValve(rocketState, lox_flow_mask);
+
+  // Refresh LCD display
+  if (initial_rocketState != rocketState)
+  {
+    LCD_DevAndFueling(1);
+  }
 }
 
 /**
@@ -355,20 +503,36 @@ void fueling_mode_logic() {
  *
  * @return void
  */
-void dev_mode_logic() {
+void dev_mode_logic()
+{
+  uint8_t initial_rocketState = rocketState;
 
-  DebouncedInput *valve_list[] = {&gn2_lngFlow, &gn2_loxFlow, &lngFlow,
-                                  &loxFlow,     &gn2Vent,     &lngVent,
+  DebouncedInput *valve_list[] = {&gn2_lngFlow,
+                                  &gn2_loxFlow,
+                                  &lngFlow,
+                                  &loxFlow,
+                                  &gn2Vent,
+                                  &lngVent,
                                   &loxVent};
 
-  for (DebouncedInput *item : valve_list) {
+  for (DebouncedInput *item : valve_list)
+  {
     debounceSwitchRead(item);
 
-    if (item->currState) {
+    if (item->currState)
+    {
       rocketState = openValve(rocketState, item->mask);
-    } else {
+    }
+    else
+    {
       rocketState = closeValve(rocketState, item->mask);
     }
+  }
+
+  // Refresh LCD display
+  if (initial_rocketState != rocketState)
+  {
+    LCD_DevAndFueling(0);
   }
 }
 
@@ -381,18 +545,22 @@ void dev_mode_logic() {
  * @param currRocketState 8‑bit packed state word to be transmitted.
  * @return void
  */
-void sendRocketState(uint8_t currRocketState) {
+void sendRocketState(uint8_t currRocketState)
+{
   pkt[14] = currRocketState;
-  // --- 1) Relief-valve Arduino ---
+  // --- 1) Relief-valve Arduino -------------------------------------------
   memcpy(pkt, MAC_RELIEF_VALVE, 6);       // destination
   memcpy(pkt + 6, MAC_GROUND_STATION, 6); // source
-  if (w5500.sendFrame(pkt, sizeof(pkt)) < 0) {
+  if (w5500.sendFrame(pkt, sizeof(pkt)) < 0)
+  {
     Serial.println(F("TX-error → relief valve"));
   }
 
-  // --- 2) Flow-valve Arduino ---
+  // --- 2) Flow-valve Arduino ---------------------------------------------
   memcpy(pkt, MAC_FLOW_VALVE, 6); // destination
-  if (w5500.sendFrame(pkt, sizeof(pkt)) < 0) {
+  // source MAC is already correct, no need to write again
+  if (w5500.sendFrame(pkt, sizeof(pkt)) < 0)
+  {
     Serial.println(F("TX-error → flow valve"));
   }
 
@@ -418,6 +586,60 @@ void sendRocketState(uint8_t currRocketState) {
 //   lcd.print(" www.sunfounder.com ");
 // }
 
+/**
+ * @brief  Receive MAC-RAW frames carrying sensor telemetry from the rocket,
+ *         validate them, and print the CSV string to the serial console.
+ *
+ * Frame format produced by the flight computer:
+ *   0-5   : Destination MAC  (ground-station MAC)
+ *   6-11  : Source MAC       (MAC_SENSOR_GIGA)
+ *   12-13 : Ethertype 0x8886 (chosen as “sensor-telemetry”)
+ *   14-N  : ASCII CSV payload, *not* NUL-terminated
+ *
+ * Example payload: "512.0,511.8,509.6,511.1,510.2"
+ */
+void receiveSensorData()
+{
+  uint16_t len = w5500.readFrame(buffer, sizeof(buffer));
+  if (len < 15)
+  { // too short to be valid
+    return;
+  }
+
+  /* --- 1) Check that this is a telemetry frame we care about ----------- */
+  const bool is_sensor_frame =
+      buffer[12] == 0x88 && buffer[13] == 0x86 &&  // ethertype
+      memcmp(buffer + 6, MAC_SENSOR_GIGA, 6) == 0; // source MAC
+
+  if (!is_sensor_frame)
+  {
+    return; // something else (e.g., valve-state echo) – ignore
+  }
+
+  /* --- 2) Copy the ASCII payload into a NUL-terminated char array ------ */
+  const uint16_t payloadLen = len - 14; // strip MAC + type
+  static char csv[256];                 // plenty for a short CSV line
+  if (payloadLen >= sizeof(csv))
+  {
+    Serial.println(F("Telemetry frame too long – dropped"));
+    return;
+  }
+  memcpy(csv, buffer + 14, payloadLen);
+  csv[payloadLen] = '\0'; // make it a C-string
+
+  /* --- 3) Print (or parse) -------------------------------------------- */
+  Serial.print(F("[Telemetry] ")); // simple pass-through
+  Serial.println(csv);
+
+  /*  Optional: quick CSV tokenisation
+      char *tok = strtok(csv, ",");
+      while (tok) {
+        Serial.println(String(tok).toFloat(), 3);
+        tok = strtok(nullptr, ",");
+      }
+  */
+}
+
 // ============================================================================
 //                                   setup()
 // ============================================================================
@@ -428,8 +650,10 @@ void sendRocketState(uint8_t currRocketState) {
  * W5500 Ethernet controller.
  * @return void
  */
-void setup() {
+void setup()
+{
   Serial.begin(9600);
+  Serial.print("wsup");
 
   // Start in safe state
   rocketState = PRE_ARM;
@@ -471,8 +695,9 @@ void setup() {
   w5500.begin(MAC_GROUND_STATION);
   Serial.println("Ethernet Start Success...");
 
-  // lcd.init();      // Initialize the LCD
-  // lcd.backlight(); // Turn on the backlight
+  // Init LCD Display Module
+  lcd.init();      // Initialize the LCD
+  lcd.backlight(); // Turn on the backlight
 }
 
 // ============================================================================
@@ -486,30 +711,34 @@ void setup() {
  * 3. Send the packed rocket state to the flight computer.
  * @return void
  */
-void loop() {
+void loop()
+{
+  receiveSensorData();
+
   operationMode = getModePress(operationMode); // Mode select
 
-  switch (operationMode) {
+  switch (operationMode)
+  {
   case LAUNCH_MODE:
-    Serial.println("Launch Mode; State = " + String(rocketState, BIN));
+    // Serial.println("Launch Mode; State = " + String(rocketState, BIN));
     launch_mode_logic();
     break;
 
   case FUELING_MODE:
-    Serial.println("Fueling Mode; State = " + String(rocketState, BIN));
+    // Serial.println("Fueling Mode; State = " + String(rocketState, BIN));
     fueling_mode_logic();
     break;
 
   case DEV_MODE:
-    Serial.println("Dev Mode; State = " + String(rocketState, BIN));
+    // Serial.println("Dev Mode; State = " + String(rocketState, BIN));
     dev_mode_logic();
     break;
 
   default:
-    Serial.println("Idling Mode");
+    // Serial.println("Idling Mode");
     break;
   }
 
   sendRocketState(rocketState);
-  delay(50);
+  delay(200);
 }
