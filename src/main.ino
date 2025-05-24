@@ -116,6 +116,11 @@ const uint8_t MAC_FLOW_VALVE[6] = {0x02, 0x46, 0x4C,
                                    0x00, 0x00, 0x03}; // FL:  flow valve
 const uint8_t MAC_SENSOR_GIGA[6] = {0x02, 0x53, 0x49,
                                     0x00, 0x00, 0x04}; // SI:  sensor interface
+
+// Change this based on which board is used as flight computer.
+#define MAC_SENSOR_DATA MAC_SENSOR_GIGA
+#define MAC_FLOW_CONTROLLER MAC_SENSOR_GIGA
+
 byte pkt[] = {
     0xff, 0xee, 0xdd, 0xcc, 0xbb, 0xaa, // destination
     0x11, 0x22, 0x33, 0x44, 0x55, 0x66, // source
@@ -125,6 +130,7 @@ byte pkt[] = {
 uint8_t buffer[1514];
 uint32_t send_count = 0;
 Wiznet5500 w5500;
+unsigned long lastSend = 0;
 
 // ============================================================================
 //                              Helper Functions
@@ -557,7 +563,7 @@ void sendRocketState(uint8_t currRocketState)
   }
 
   // --- 2) Flow-valve Arduino ---------------------------------------------
-  memcpy(pkt, MAC_FLOW_VALVE, 6); // destination
+  memcpy(pkt, MAC_FLOW_CONTROLLER, 6); // destination
   // source MAC is already correct, no need to write again
   if (w5500.sendFrame(pkt, sizeof(pkt)) < 0)
   {
@@ -602,42 +608,70 @@ void receiveSensorData()
 {
   uint16_t len = w5500.readFrame(buffer, sizeof(buffer));
   if (len < 15)
-  { // too short to be valid
-    return;
-  }
+    return; // too short
 
-  /* --- 1) Check that this is a telemetry frame we care about ----------- */
+  /* 1) Only accept telemetry frames from the flight computer */
   const bool is_sensor_frame =
-      buffer[12] == 0x88 && buffer[13] == 0x86 &&  // ethertype
-      memcmp(buffer + 6, MAC_SENSOR_GIGA, 6) == 0; // source MAC
+      buffer[12] == 0x88 && buffer[13] == 0x89 &&
+      memcmp(buffer + 6, MAC_SENSOR_DATA, 6) == 0;
 
   if (!is_sensor_frame)
-  {
-    return; // something else (e.g., valve-state echo) – ignore
-  }
-
-  /* --- 2) Copy the ASCII payload into a NUL-terminated char array ------ */
-  const uint16_t payloadLen = len - 14; // strip MAC + type
-  static char csv[256];                 // plenty for a short CSV line
-  if (payloadLen >= sizeof(csv))
-  {
-    Serial.println(F("Telemetry frame too long – dropped"));
     return;
-  }
+
+  /* 2) Copy the ASCII payload into a C-string */
+  const uint16_t payloadLen = len - 14;
+  static char csv[256]; // plenty for 10 floats
+  if (payloadLen >= sizeof(csv))
+    return; // corrupted – drop
   memcpy(csv, buffer + 14, payloadLen);
-  csv[payloadLen] = '\0'; // make it a C-string
+  csv[payloadLen] = '\0';
 
-  /* --- 3) Print (or parse) -------------------------------------------- */
-  Serial.print(F("[Telemetry] ")); // simple pass-through
-  Serial.println(csv);
+  /* 3) Split the CSV into 10 floats */
+  float pt[5], lc[3], tc[2];
+  char *tok = strtok(csv, ",");
+  uint8_t idx = 0;
+  while (tok && idx < 10)
+  {
+    float v = atof(tok);
+    if (idx < 5)
+      pt[idx] = v;
+    else if (idx < 8)
+      lc[idx - 5] = v;
+    else
+      tc[idx - 8] = v;
+    tok = strtok(nullptr, ",");
+    ++idx;
+  }
+  if (idx != 10)
+    return; // malformed – drop
 
-  /*  Optional: quick CSV tokenisation
-      char *tok = strtok(csv, ",");
-      while (tok) {
-        Serial.println(String(tok).toFloat(), 3);
-        tok = strtok(nullptr, ",");
-      }
-  */
+  /* 4) Stream-print JSON ------------------------------------------------ */
+  /* ---- stream out JSON (no inner newlines) ---- */
+  Serial.print(F("{\"value\":{\"pt\":["));
+  for (uint8_t i = 0; i < 5; ++i)
+  {
+    Serial.print(pt[i], 3);
+    if (i < 4)
+      Serial.print(',');
+  }
+  Serial.print(F("],\"tc\":["));
+  for (uint8_t i = 0; i < 2; ++i)
+  {
+    Serial.print(tc[i], 3);
+    if (i < 1)
+      Serial.print(',');
+  }
+  Serial.print(F("],\"lc\":["));
+  for (uint8_t i = 0; i < 3; ++i)
+  {
+    Serial.print(lc[i], 3);
+    if (i < 2)
+      Serial.print(',');
+  }
+  Serial.print(F("],\"fcv\":[],\"timestamp\":\""));
+  printIsoTimestamp();
+  Serial.print(F("\"}}"));
+  Serial.println(); // one newline per object
 }
 
 // ============================================================================
@@ -700,6 +734,23 @@ void setup()
   lcd.backlight(); // Turn on the backlight
 }
 
+static void printIsoTimestamp()
+{
+  const uint32_t nowMs = millis();
+  const uint32_t sec = nowMs / 1000UL;
+  const uint16_t msec = nowMs % 1000UL;
+
+  Serial.print(F("PT"));
+  Serial.print(sec);
+  Serial.print('.');
+  if (msec < 10)
+    Serial.print(F("00"));
+  else if (msec < 100)
+    Serial.print('0');
+  Serial.print(msec);
+  Serial.print('S');
+}
+
 // ============================================================================
 //                                    loop()
 // ============================================================================
@@ -739,6 +790,10 @@ void loop()
     break;
   }
 
-  sendRocketState(rocketState);
-  delay(200);
+  if (millis() - lastSend > 300)
+  {
+    lastSend = millis();
+    sendRocketState(rocketState);
+  }
+  delay(300);
 }
