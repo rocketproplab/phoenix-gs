@@ -563,7 +563,7 @@ void sendRocketState(uint8_t currRocketState)
   }
 
   // --- 2) Flow-valve Arduino ---------------------------------------------
-  memcpy(pkt, MAC_FLOW_CONTROLLER, 6); // destination
+  memcpy(pkt, MAC_SENSOR_GIGA, 6); // destination
   // source MAC is already correct, no need to write again
   if (w5500.sendFrame(pkt, sizeof(pkt)) < 0)
   {
@@ -606,72 +606,74 @@ void sendRocketState(uint8_t currRocketState)
  */
 void receiveSensorData()
 {
-  uint16_t len = w5500.readFrame(buffer, sizeof(buffer));
-  if (len < 15)
-    return; // too short
+  uint16_t len;
+  while ((len = w5500.readFrame(buffer, sizeof(buffer))) > 0) {
+    // length sanity check
+    if (len < 15) {
+      return;
+    }
 
-  /* 1) Only accept telemetry frames from the flight computer */
-  const bool is_sensor_frame =
-      buffer[12] == 0x88 && buffer[13] == 0x89 &&
-      memcmp(buffer + 6, MAC_SENSOR_DATA, 6) == 0;
+    /* 1) Only accept telemetry frames from the flight computer */
+    const bool is_sensor_frame = buffer[12] == 0x88 && buffer[13] == 0x89 &&
+                                 memcmp(buffer + 6, MAC_SENSOR_GIGA, 6) == 0;
 
-  if (!is_sensor_frame)
-    return;
+    if (!is_sensor_frame) {
+      // Serial.println("Not a sensor frame");
+      return;
+    }
 
-  /* 2) Copy the ASCII payload into a C-string */
-  const uint16_t payloadLen = len - 14;
-  static char csv[256]; // plenty for 10 floats
-  if (payloadLen >= sizeof(csv))
-    return; // corrupted – drop
-  memcpy(csv, buffer + 14, payloadLen);
-  csv[payloadLen] = '\0';
+    /* 2) Copy the ASCII payload into a C-string */
+    // Serial.println("Beginning copy");
+    const uint16_t payloadLen = len - 14;
+    static char csv[256]; // plenty for 10 floats
+    if (payloadLen >= sizeof(csv))
+      return; // corrupted – drop
+    memcpy(csv, buffer + 14, payloadLen);
+    csv[payloadLen] = '\0';
 
-  /* 3) Split the CSV into 10 floats */
-  float pt[5], lc[3], tc[2];
-  char *tok = strtok(csv, ",");
-  uint8_t idx = 0;
-  while (tok && idx < 10)
-  {
-    float v = atof(tok);
-    if (idx < 5)
-      pt[idx] = v;
-    else if (idx < 8)
-      lc[idx - 5] = v;
-    else
-      tc[idx - 8] = v;
-    tok = strtok(nullptr, ",");
-    ++idx;
+    /* 3) Split the CSV into 10 floats */
+    float pt[5], lc[3], tc[2];
+    char *tok = strtok(csv, ",");
+    uint8_t idx = 0;
+    while (tok && idx < 10) {
+      float v = atof(tok);
+      if (idx < 5)
+        pt[idx] = v;
+      else if (idx < 8)
+        lc[idx - 5] = v;
+      else
+        tc[idx - 8] = v;
+      tok = strtok(nullptr, ",");
+      ++idx;
+    }
+    if (idx != 10)
+      return; // malformed – drop
+
+    /* 4) Stream-print JSON ------------------------------------------------ */
+    /* ---- stream out JSON (no inner newlines) ---- */
+    Serial.print(F("{\"value\":{\"pt\":["));
+    for (uint8_t i = 0; i < 5; ++i) {
+      Serial.print(pt[i], 3);
+      if (i < 4)
+        Serial.print(',');
+    }
+    Serial.print(F("],\"tc\":["));
+    for (uint8_t i = 0; i < 2; ++i) {
+      Serial.print(tc[i], 3);
+      if (i < 1)
+        Serial.print(',');
+    }
+    Serial.print(F("],\"lc\":["));
+    for (uint8_t i = 0; i < 3; ++i) {
+      Serial.print(lc[i], 3);
+      if (i < 2)
+        Serial.print(',');
+    }
+    Serial.print(F("],\"fcv\":[],\"timestamp\":\""));
+    printIsoTimestamp();
+    Serial.print(F("\"}}"));
+    Serial.println(); // one newline per object
   }
-  if (idx != 10)
-    return; // malformed – drop
-
-  /* 4) Stream-print JSON ------------------------------------------------ */
-  /* ---- stream out JSON (no inner newlines) ---- */
-  Serial.print(F("{\"value\":{\"pt\":["));
-  for (uint8_t i = 0; i < 5; ++i)
-  {
-    Serial.print(pt[i], 3);
-    if (i < 4)
-      Serial.print(',');
-  }
-  Serial.print(F("],\"tc\":["));
-  for (uint8_t i = 0; i < 2; ++i)
-  {
-    Serial.print(tc[i], 3);
-    if (i < 1)
-      Serial.print(',');
-  }
-  Serial.print(F("],\"lc\":["));
-  for (uint8_t i = 0; i < 3; ++i)
-  {
-    Serial.print(lc[i], 3);
-    if (i < 2)
-      Serial.print(',');
-  }
-  Serial.print(F("],\"fcv\":[],\"timestamp\":\""));
-  printIsoTimestamp();
-  Serial.print(F("\"}}"));
-  Serial.println(); // one newline per object
 }
 
 // ============================================================================
@@ -686,8 +688,8 @@ void receiveSensorData()
  */
 void setup()
 {
-  Serial.begin(9600);
-  Serial.print("wsup");
+  Serial.begin(115200);
+  Serial.print("Setup");
 
   // Start in safe state
   rocketState = PRE_ARM;
@@ -736,17 +738,15 @@ void setup()
 
 static void printIsoTimestamp()
 {
-  const uint32_t nowMs = millis();
-  const uint32_t sec = nowMs / 1000UL;
-  const uint16_t msec = nowMs % 1000UL;
+  const uint32_t nowMs  = millis();
+  const uint32_t sec    =  nowMs / 1000UL;
+  const uint16_t msec   =  nowMs % 1000UL;
 
   Serial.print(F("PT"));
   Serial.print(sec);
   Serial.print('.');
-  if (msec < 10)
-    Serial.print(F("00"));
-  else if (msec < 100)
-    Serial.print('0');
+  if      (msec < 10)  Serial.print(F("00"));
+  else if (msec < 100) Serial.print('0');
   Serial.print(msec);
   Serial.print('S');
 }
@@ -790,10 +790,8 @@ void loop()
     break;
   }
 
-  if (millis() - lastSend > 300)
-  {
+  if(millis()-lastSend >= 200){
     lastSend = millis();
     sendRocketState(rocketState);
   }
-  delay(300);
 }
