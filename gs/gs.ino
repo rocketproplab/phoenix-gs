@@ -102,6 +102,8 @@ enum MODE
   FUELING_MODE,
   DEV_MODE
 };
+
+MODE pre_operationMode = NONE_MODE;
 MODE operationMode = NONE_MODE;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -318,6 +320,14 @@ MODE getModePress(MODE PRE_MODE)
   }
 }
 
+/**
+ * @brief LCD Display module for dev or fueling mode
+ *
+ * The function updates the LCD display with the current rocketState for dev
+ * mode and fueling mode
+ *
+ * @param mode 0 for dev mode and 1 for fueling mode
+ */
 void LCD_DevAndFueling(int mode)
 {
 
@@ -366,6 +376,13 @@ void LCD_DevAndFueling(int mode)
   }
 }
 
+/**
+ * @brief LCD Display module for launch or fueling mode
+ *
+ * The function updates the LCD display with the current rocketState for
+ * fueling mode
+ *
+ */
 void LCD_LaunchMode()
 {
   lcd.clear(); // wipe previous frame
@@ -773,16 +790,33 @@ void loop()
   case LAUNCH_MODE:
     // Serial.println("Launch Mode; State = " + String(rocketState, BIN));
     launch_mode_logic();
+
+    if (operationMode != pre_operationMode){
+      LCD_LaunchMode();
+    }
+
     break;
 
   case FUELING_MODE:
     // Serial.println("Fueling Mode; State = " + String(rocketState, BIN));
     fueling_mode_logic();
+
+    if (operationMode != pre_operationMode)
+    {
+      LCD_DevAndFueling(1);
+    }
+
     break;
 
   case DEV_MODE:
     // Serial.println("Dev Mode; State = " + String(rocketState, BIN));
     dev_mode_logic();
+
+    if (operationMode != pre_operationMode)
+    {
+      LCD_DevAndFueling(0);
+    }
+
     break;
 
   default:
@@ -794,4 +828,6 @@ void loop()
     lastSend = millis();
     sendRocketState(rocketState);
   }
+
+  pre_operationMode = operationMode;
 }
