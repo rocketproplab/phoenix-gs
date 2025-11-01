@@ -34,8 +34,8 @@ const uint8_t ARMED = 0b1100000;   // Armed: ready to launch, waiting trigger
 const uint8_t LAUNCH = 0b1101010;  // Launch: ignition/flight started
 
 // Individual valve masks
-const uint8_t gn2_lng_flow_mask = 0b1000000;
-const uint8_t gn2_lox_flow_mask = 0b0100000;
+const uint8_t lng_pressure_mask = 0b1000000;
+const uint8_t lox_pressure_mask = 0b0100000;
 const uint8_t gn2_vent_mask = 0b0010000;
 const uint8_t lng_flow_mask = 0b0001000;
 const uint8_t lng_vent_mask = 0b0000100;
@@ -47,8 +47,8 @@ const uint8_t null_mask = 0b0000000;
 // ─────────────────────────────────────────────────────────────────────────────
 //                                 Pin Mapping
 // ─────────────────────────────────────────────────────────────────────────────
-const int PIN_GN2_LNG_F = 48; // GN2 flow connected to LNG
-const int PIN_GN2_LOX_F = 19; // GN2 flow connected to LOX
+const int PIN_LNG_P = 48; // GN2 flow connected to LNG
+const int PIN_LOX_P = 19; // GN2 flow connected to LOX
 const int PIN_LNG_F = 49;
 const int PIN_LOX_F = 47;
 const int PIN_GN2_V = 46;
@@ -81,7 +81,7 @@ struct DebouncedInput
 };
 
 // Instances – declared here for global lifetime; initialised in setup()
-DebouncedInput gn2_lngFlow, gn2_loxFlow, lngFlow, loxFlow;
+DebouncedInput lngPressure, loxPressure, lngFlow, loxFlow;
 DebouncedInput gn2Vent, lngVent, loxVent;
 DebouncedInput arm, abort_mission, launch;
 DebouncedInput launch_M, fueling_M, dev_M;
@@ -102,6 +102,8 @@ enum MODE
   FUELING_MODE,
   DEV_MODE
 };
+
+MODE pre_operationMode = NONE_MODE;
 MODE operationMode = NONE_MODE;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -318,21 +320,29 @@ MODE getModePress(MODE PRE_MODE)
   }
 }
 
+/**
+ * @brief LCD Display module for dev or fueling mode
+ *
+ * The function updates the LCD display with the current rocketState for dev
+ * mode and fueling mode
+ *
+ * @param mode 0 for dev mode and 1 for fueling mode
+ */
 void LCD_DevAndFueling(int mode)
 {
 
   /* ---------- 1. Prepare the state list ---------- */
   DebouncedInput *valve_list[] = {
-      &gn2_lngFlow, &gn2Vent, &gn2_loxFlow, &lngVent, &lngFlow, &loxVent, &loxFlow};
+      &lngPressure, &gn2Vent, &loxPressure, &lngVent, &lngFlow, &loxVent, &loxFlow};
 
   /* ---------- 2. Prepare names (index 0 is the Dev-Mode header) ---------- */
   char **itemNames;
 
   const char *itemNames_Dev[8] = {
-      "DEV MODE", "G2G-F", "GN2-V", "G2X-F", "LNG-V", "LNG-F", "LOX-V", "LOX-F"};
+      "DEV MODE", "LNG_P", "GN2-V", "LOX-P", "LNG-V", "LNG-F", "LOX-V", "LOX-F"};
 
   const char *itemNames_Fueling[8] = {
-      "FUEL MODE", "G2G-F", "GN2-V", "G2X-F", "LNG-V", "LNG-F", "LOX-V", "LOX-F"};
+      "FUEL MODE", "LNG_P", "GN2-V", "LOX-P", "LNG-V", "LNG-F", "LOX-V", "LOX-F"};
 
   // Decide on the mode to operate on
   if (mode == 0)
@@ -366,6 +376,13 @@ void LCD_DevAndFueling(int mode)
   }
 }
 
+/**
+ * @brief LCD Display module for launch or fueling mode
+ *
+ * The function updates the LCD display with the current rocketState for
+ * fueling mode
+ *
+ */
 void LCD_LaunchMode()
 {
   lcd.clear(); // wipe previous frame
@@ -490,8 +507,8 @@ void fueling_mode_logic()
     }
   }
 
-  rocketState = closeValve(rocketState, gn2_lng_flow_mask);
-  rocketState = closeValve(rocketState, gn2_lox_flow_mask);
+  rocketState = closeValve(rocketState, lng_pressure_mask);
+  rocketState = closeValve(rocketState, lox_pressure_mask);
   rocketState = closeValve(rocketState, lng_flow_mask);
   rocketState = closeValve(rocketState, lox_flow_mask);
 
@@ -513,8 +530,8 @@ void dev_mode_logic()
 {
   uint8_t initial_rocketState = rocketState;
 
-  DebouncedInput *valve_list[] = {&gn2_lngFlow,
-                                  &gn2_loxFlow,
+  DebouncedInput *valve_list[] = {&lngPressure,
+                                  &loxPressure,
                                   &lngFlow,
                                   &loxFlow,
                                   &gn2Vent,
@@ -695,8 +712,8 @@ void setup()
   rocketState = PRE_ARM;
 
   // Configure all control inputs as pull‑ups (active‑LOW)
-  pinMode(PIN_GN2_LNG_F, INPUT_PULLUP);
-  pinMode(PIN_GN2_LOX_F, INPUT_PULLUP);
+  pinMode(PIN_LNG_P, INPUT_PULLUP);
+  pinMode(PIN_LOX_P, INPUT_PULLUP);
   pinMode(PIN_LNG_F, INPUT_PULLUP);
   pinMode(PIN_LOX_F, INPUT_PULLUP);
   pinMode(PIN_GN2_V, INPUT_PULLUP);
@@ -710,8 +727,8 @@ void setup()
   pinMode(PIN_DEV_M, INPUT_PULLUP);
 
   // Map physical pins to DebouncedInput objects
-  gn2_lngFlow = {PIN_GN2_LNG_F, LOW, LOW, 0, gn2_lng_flow_mask};
-  gn2_loxFlow = {PIN_GN2_LOX_F, LOW, LOW, 0, gn2_lox_flow_mask};
+  lngPressure = {PIN_LNG_P, LOW, LOW, 0, lng_pressure_mask};
+  loxPressure = {PIN_LOX_P, LOW, LOW, 0, lox_pressure_mask};
   lngFlow = {PIN_LNG_F, LOW, LOW, 0, lng_flow_mask};
   loxFlow = {PIN_LOX_F, LOW, LOW, 0, lox_flow_mask};
   gn2Vent = {PIN_GN2_V, LOW, LOW, 0, gn2_vent_mask};
@@ -773,16 +790,33 @@ void loop()
   case LAUNCH_MODE:
     // Serial.println("Launch Mode; State = " + String(rocketState, BIN));
     launch_mode_logic();
+
+    if (operationMode != pre_operationMode){
+      LCD_LaunchMode();
+    }
+
     break;
 
   case FUELING_MODE:
     // Serial.println("Fueling Mode; State = " + String(rocketState, BIN));
     fueling_mode_logic();
+
+    if (operationMode != pre_operationMode)
+    {
+      LCD_DevAndFueling(1);
+    }
+
     break;
 
   case DEV_MODE:
     // Serial.println("Dev Mode; State = " + String(rocketState, BIN));
     dev_mode_logic();
+
+    if (operationMode != pre_operationMode)
+    {
+      LCD_DevAndFueling(0);
+    }
+
     break;
 
   default:
@@ -794,4 +828,6 @@ void loop()
     lastSend = millis();
     sendRocketState(rocketState);
   }
+
+  pre_operationMode = operationMode;
 }
