@@ -329,10 +329,10 @@ void LCD_DevAndFueling(int mode)
   char **itemNames;
 
   const char *itemNames_Dev[8] = {
-      "DEV MODE", "LNG_P", "GN2-V", "LOX_P", "LNG-V", "LNG-F", "LOX-V", "LOX-F"};
+      "DEV MODE", "LNG_P", "GN2-V", "LOX-P", "LNG-V", "LNG-F", "LOX-V", "LOX-F"};
 
   const char *itemNames_Fueling[8] = {
-      "FUEL MODE", "LNG_P", "GN2-V", "LOX_P", "LNG-V", "LNG-F", "LOX-V", "LOX-F"};
+      "FUEL MODE", "LNG_P", "GN2-V", "LOX-P", "LNG-V", "LNG-F", "LOX-V", "LOX-F"};
 
   // Decide on the mode to operate on
   if (mode == 0)
