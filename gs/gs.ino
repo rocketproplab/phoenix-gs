@@ -13,53 +13,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //                                  Includes
 // ─────────────────────────────────────────────────────────────────────────────
+#include "constants.h"
 #include "w5500.h" // WIZnet W5500 Ethernet MAC/PHY driver (MAC‑RAW mode)
 #include <Wire.h>  // I2C bus (LCD display, not currently enabled)
 #include <LiquidCrystal_I2C.h>
 LiquidCrystal_I2C lcd(0x27, 20, 4);
 
-// #include <LiquidCrystal_I2C.h>
-// LiquidCrystal_I2C lcd(0x27, 20, 4);
-
-// ─────────────────────────────────────────────────────────────────────────────
-//                               State Encoding
-// ─────────────────────────────────────────────────────────────────────────────
-/** An 8 bits packet that holds the current valve & control state */
+//Rocket State To Be Updated
 uint8_t rocketState;
-
-// Launch sequence encoding
-const uint8_t PRE_ARM = 0b0000000; // Safe: all valves closed
-const uint8_t ABORT = 0b0010101;   // Abort: open all vent valves
-const uint8_t ARMED = 0b1100000;   // Armed: ready to launch, waiting trigger
-const uint8_t LAUNCH = 0b1101010;  // Launch: ignition/flight started
-
-// Individual valve masks
-const uint8_t lng_pressure_mask = 0b1000000;
-const uint8_t lox_pressure_mask = 0b0100000;
-const uint8_t gn2_vent_mask = 0b0010000;
-const uint8_t lng_flow_mask = 0b0001000;
-const uint8_t lng_vent_mask = 0b0000100;
-const uint8_t lox_flow_mask = 0b0000010;
-const uint8_t lox_vent_mask = 0b0000001;
-
-const uint8_t null_mask = 0b0000000;
-
-// ─────────────────────────────────────────────────────────────────────────────
-//                                 Pin Mapping
-// ─────────────────────────────────────────────────────────────────────────────
-const int PIN_LNG_P = 48; // GN2 flow connected to LNG
-const int PIN_LOX_P = 19; // GN2 flow connected to LOX
-const int PIN_LNG_F = 49;
-const int PIN_LOX_F = 47;
-const int PIN_GN2_V = 46;
-const int PIN_LNG_V = 45;
-const int PIN_LOX_V = 44;
-const int PIN_ARM = 18;
-const int PIN_LAUNCH = 17;
-const int PIN_ABORT = 26;    // this is a pull down???
-const int PIN_LAUNCH_M = 8;  // Launch mode
-const int PIN_FUELING_M = 9; // Fueling mode
-const int PIN_DEV_M = 10;    // Dev mode
 
 // ─────────────────────────────────────────────────────────────────────────────
 //                                  Typedefs
@@ -69,7 +30,7 @@ const int PIN_DEV_M = 10;    // Dev mode
  *
  * All inputs are wired as active‑LOW.  The struct tracks the debounced state
  * and implements a simple time‑based debounce; state only changes if the new
- * level remains stable for `debounceButtonDelay` ms.
+ * level remains stable for `DEBOUNCE_BUTTON_DELAY` ms.
  */
 struct DebouncedInput
 {
@@ -85,12 +46,6 @@ DebouncedInput lngPressure, loxPressure, lngFlow, loxFlow;
 DebouncedInput gn2Vent, lngVent, loxVent;
 DebouncedInput arm, abort_mission, launch;
 DebouncedInput launch_M, fueling_M, dev_M;
-
-// ─────────────────────────────────────────────────────────────────────────────
-//                               Debounce Timing
-// ─────────────────────────────────────────────────────────────────────────────
-unsigned long debounceButtonDelay = 30; // for button
-unsigned long debounceSwitchDelay = 30; // for switches
 
 // ─────────────────────────────────────────────────────────────────────────────
 //                              Operating Modes
@@ -109,16 +64,6 @@ MODE operationMode = NONE_MODE;
 // ─────────────────────────────────────────────────────────────────────────────
 //                           Ethernet (MAC‑RAW) Setup
 // ─────────────────────────────────────────────────────────────────────────────
-// first byte 0x02 = locally‑administered, unicast
-const uint8_t MAC_GROUND_STATION[6] = {0x02, 0x47, 0x53,
-                                       0x00, 0x00, 0x01}; // GS:  ground station
-const uint8_t MAC_RELIEF_VALVE[6] = {0x02, 0x52, 0x56,
-                                     0x00, 0x00, 0x02}; // RV:  relief valve
-const uint8_t MAC_FLOW_VALVE[6] = {0x02, 0x46, 0x4C,
-                                   0x00, 0x00, 0x03}; // FL:  flow valve
-const uint8_t MAC_SENSOR_GIGA[6] = {0x02, 0x53, 0x49,
-                                    0x00, 0x00, 0x04}; // SI:  sensor interface
-
 // Change this based on which board is used as flight computer.
 #define MAC_SENSOR_DATA MAC_SENSOR_GIGA
 #define MAC_FLOW_CONTROLLER MAC_SENSOR_GIGA
@@ -194,7 +139,7 @@ void debounceButtonRead(DebouncedInput *input)
     input->lastDebounceTime = millis();
   }
 
-  if ((millis() - input->lastDebounceTime) > debounceButtonDelay)
+  if ((millis() - input->lastDebounceTime) > DEBOUNCE_BUTTON_DELAY)
   {
     if (reading != input->currState)
     {
@@ -221,7 +166,7 @@ void debounceAbortRead(DebouncedInput *input)
     input->lastDebounceTime = millis();
   }
 
-  if ((millis() - input->lastDebounceTime) > debounceButtonDelay)
+  if ((millis() - input->lastDebounceTime) > DEBOUNCE_BUTTON_DELAY)
   {
     if (reading != input->currState)
     {
@@ -250,7 +195,7 @@ void debounceSwitchRead(DebouncedInput *input)
     input->lastDebounceTime = millis();
   }
 
-  if ((millis() - input->lastDebounceTime) > debounceSwitchDelay)
+  if ((millis() - input->lastDebounceTime) > dEBOUNCE_SWITCH_DELAY)
   {
     if (reading != input->currState)
     {
@@ -507,10 +452,10 @@ void fueling_mode_logic()
     }
   }
 
-  rocketState = closeValve(rocketState, lng_pressure_mask);
-  rocketState = closeValve(rocketState, lox_pressure_mask);
-  rocketState = closeValve(rocketState, lng_flow_mask);
-  rocketState = closeValve(rocketState, lox_flow_mask);
+  rocketState = closeValve(rocketState, LNG_PRES_MASK);
+  rocketState = closeValve(rocketState, LOX_PRES_MASK);
+  rocketState = closeValve(rocketState, LNG_FLOW_MASK);
+  rocketState = closeValve(rocketState, LOX_FLOW_MASK);
 
   // Refresh LCD display
   if (initial_rocketState != rocketState)
@@ -648,30 +593,30 @@ void receiveSensorData()
     memcpy(csv, buffer + 14, payloadLen);
     csv[payloadLen] = '\0';
 
-    /* 3) Split the CSV into 10 floats */
-    float pt[5], lc[3], tc[2];
+    /* 3) Split the CSV into 12 floats */
+    float pt[7], lc[3], tc[2];
     char *tok = strtok(csv, ",");
     uint8_t idx = 0;
-    while (tok && idx < 10) {
+    while (tok && idx < 12) {
       float v = atof(tok);
-      if (idx < 5)
+      if (idx < 7)
         pt[idx] = v;
-      else if (idx < 8)
-        lc[idx - 5] = v;
+      else if (idx < 10)
+        lc[idx - 7] = v;
       else
-        tc[idx - 8] = v;
+        tc[idx - 10] = v;
       tok = strtok(nullptr, ",");
       ++idx;
     }
-    if (idx != 10)
+    if (idx != 12)
       return; // malformed – drop
 
     /* 4) Stream-print JSON ------------------------------------------------ */
     /* ---- stream out JSON (no inner newlines) ---- */
     Serial.print(F("{\"value\":{\"pt\":["));
-    for (uint8_t i = 0; i < 5; ++i) {
+    for (uint8_t i = 0; i < 7; ++i) {
       Serial.print(pt[i], 3);
-      if (i < 4)
+      if (i < 6)
         Serial.print(',');
     }
     Serial.print(F("],\"tc\":["));
@@ -727,19 +672,19 @@ void setup()
   pinMode(PIN_DEV_M, INPUT_PULLUP);
 
   // Map physical pins to DebouncedInput objects
-  lngPressure = {PIN_LNG_P, LOW, LOW, 0, lng_pressure_mask};
-  loxPressure = {PIN_LOX_P, LOW, LOW, 0, lox_pressure_mask};
-  lngFlow = {PIN_LNG_F, LOW, LOW, 0, lng_flow_mask};
-  loxFlow = {PIN_LOX_F, LOW, LOW, 0, lox_flow_mask};
-  gn2Vent = {PIN_GN2_V, LOW, LOW, 0, gn2_vent_mask};
-  lngVent = {PIN_LNG_V, LOW, LOW, 0, lng_vent_mask};
-  loxVent = {PIN_LOX_V, LOW, LOW, 0, lox_vent_mask};
-  arm = {PIN_ARM, LOW, LOW, 0, null_mask};
-  abort_mission = {PIN_ABORT, LOW, LOW, 0, null_mask};
-  launch = {PIN_LAUNCH, LOW, LOW, 0, null_mask};
-  launch_M = {PIN_LAUNCH_M, LOW, LOW, 0, null_mask};
-  fueling_M = {PIN_FUELING_M, LOW, LOW, 0, null_mask};
-  dev_M = {PIN_DEV_M, LOW, LOW, 0, null_mask};
+  lngPressure = {PIN_LNG_P, LOW, LOW, 0, LNG_PRES_MASK};
+  loxPressure = {PIN_LOX_P, LOW, LOW, 0, LOX_PRES_MASK};
+  lngFlow = {PIN_LNG_F, LOW, LOW, 0, LNG_FLOW_MASK};
+  loxFlow = {PIN_LOX_F, LOW, LOW, 0, LOX_FLOW_MASK};
+  gn2Vent = {PIN_GN2_V, LOW, LOW, 0, GN2_VENT_MASK};
+  lngVent = {PIN_LNG_V, LOW, LOW, 0, LNG_VENT_MASK};
+  loxVent = {PIN_LOX_V, LOW, LOW, 0, LOX_VENT_MASK};
+  arm = {PIN_ARM, LOW, LOW, 0, NULL_MASK};
+  abort_mission = {PIN_ABORT, LOW, LOW, 0, NULL_MASK};
+  launch = {PIN_LAUNCH, LOW, LOW, 0, NULL_MASK};
+  launch_M = {PIN_LAUNCH_M, LOW, LOW, 0, NULL_MASK};
+  fueling_M = {PIN_FUELING_M, LOW, LOW, 0, NULL_MASK};
+  dev_M = {PIN_DEV_M, LOW, LOW, 0, NULL_MASK};
 
   // Bring up Ethernet in MAC‑RAW mode
   Serial.println("Ethernet Module Starting...");
