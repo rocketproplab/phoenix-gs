@@ -65,19 +65,67 @@ MODE operationMode = NONE_MODE;
 //                           Ethernet (MAC‑RAW) Setup
 // ─────────────────────────────────────────────────────────────────────────────
 // Change this based on which board is used as flight computer.
-#define MAC_SENSOR_DATA MAC_SENSOR_GIGA
-#define MAC_FLOW_CONTROLLER MAC_SENSOR_GIGA
-
-byte pkt[] = {
-    0xff, 0xee, 0xdd, 0xcc, 0xbb, 0xaa, // destination
-    0x11, 0x22, 0x33, 0x44, 0x55, 0x66, // source
-    0x63, 0xe4,                         // experimental ethertype
-    0x00,                               // payload
-};
 uint8_t buffer[1514];
-uint32_t send_count = 0;
 Wiznet5500 w5500;
-unsigned long lastSend = 0;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ethernet (MAC‑RAW) Constants
+// ─────────────────────────────────────────────────────────────────────────────
+static const uint8_t PHX_ETYPE_HI = 0x88;
+static const uint8_t PHX_ETYPE_LO = 0x89;
+
+// first byte 0x02 = locally‑administered, unicast
+const uint8_t MAC_GROUND_STATION[6] = {0x02, 0x47, 0x53,
+                                       0x00, 0x00, 0x01}; // GS:  ground station
+const uint8_t MAC_RELIEF_VALVE[6] = {0x02, 0x52, 0x56,
+                                     0x00, 0x00, 0x02}; // RV:  relief valve
+const uint8_t MAC_FLOW_VALVE[6] = {0x02, 0x46, 0x4C,
+                                   0x00, 0x00, 0x03}; // FL:  flow valve
+const uint8_t MAC_SENSOR_GIGA[6] = {0x02, 0x53, 0x49,
+                                    0x00, 0x00, 0x04}; // SI:  sensor interface
+const uint8_t MAC_BROADCAST[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF}; // broadcast
+
+// message types
+enum : uint8_t {
+  MSG_DISCOVER  = 0x01,  // GS -> broadcast (unpaired discovery)
+  MSG_AWAKE     = 0x02,  // FC -> GS (ack discover / ready)
+  MSG_COMMAND   = 0x03,  // GS -> FC (rocketState)
+  MSG_TELEMETRY = 0x04   // FC -> GS (telemetry response)
+};
+
+struct __attribute__((packed)) PhxHdr {
+  uint8_t dstMac[6];
+  uint8_t srcMac[6];
+  uint8_t ethType[2];
+  uint8_t msgType;
+  uint8_t seq;
+};
+
+static const size_t PHX_HDR_LEN = sizeof(PhxHdr);
+static const size_t PHX_MAX_PAYLOAD = 300;
+static uint8_t txBuf[PHX_HDR_LEN + PHX_MAX_PAYLOAD];
+
+// Link state
+enum GsLinkState : uint8_t {
+  GS_UNPAIRED = 0,
+  GS_AWAKE = 1
+};
+static GsLinkState gsLink = GS_UNPAIRED;
+
+static unsigned long gsLastDiscoverMs = 0;
+static unsigned long gsLastRxMs = 0;
+
+static bool gsAwaitingTelemetry = false;
+static uint8_t gsSeq = 0;
+static uint8_t gsLastCmdSeq = 0;
+static uint8_t gsLastCmdState = 0;
+static unsigned long gsLastCmdTxMs = 0;
+static uint8_t gsCmdRetries = 0;
+
+static const unsigned long GS_DISCOVER_INTERVAL_MS = 500;
+static const unsigned long GS_LINK_TIMEOUT_MS = 1500;
+static const unsigned long GS_CMD_RTX_MS = 40;      // retransmit command if telemetry doesn't arrive fast
+static const uint8_t       GS_CMD_RTX_MAX = 3;
 
 // ============================================================================
 //                              Helper Functions
@@ -507,32 +555,166 @@ void dev_mode_logic()
 // ============================================================================
 //                           Communications Helpers
 // ============================================================================
-/**
- * @brief  Transmit the current rocket state over Ethernet (MAC‑RAW frame).
- *
- * @param currRocketState 8‑bit packed state word to be transmitted.
- * @return void
- */
-void sendRocketState(uint8_t currRocketState)
+static uint16_t phxPadLen(uint16_t n) {
+  return (n < 60) ? 60 : n;
+}
+
+static int16_t gsSend(uint8_t msgType, uint8_t seq,
+                      const uint8_t *payload, uint16_t payloadLen,
+                      const uint8_t dstMac[6])
 {
-  pkt[14] = currRocketState;
-  // --- 1) Relief-valve Arduino -------------------------------------------
-  memcpy(pkt, MAC_RELIEF_VALVE, 6);       // destination
-  memcpy(pkt + 6, MAC_GROUND_STATION, 6); // source
-  if (w5500.sendFrame(pkt, sizeof(pkt)) < 0)
-  {
-    Serial.println(F("TX-error → relief valve"));
+  if (payloadLen > PHX_MAX_PAYLOAD) payloadLen = PHX_MAX_PAYLOAD;
+
+  // Header - flight computer only now, vents later
+  memcpy(txBuf + 0, dstMac, 6);
+  memcpy(txBuf + 6, MAC_GROUND_STATION, 6);
+  txBuf[12] = PHX_ETYPE_HI;
+  txBuf[13] = PHX_ETYPE_LO;
+  txBuf[14] = msgType;
+  txBuf[15] = seq;
+
+  // Payload
+  if (payloadLen && payload) {
+    memcpy(txBuf + PHX_HDR_LEN, payload, payloadLen);
   }
 
-  // --- 2) Flow-valve Arduino ---------------------------------------------
-  memcpy(pkt, MAC_SENSOR_GIGA, 6); // destination
-  // source MAC is already correct, no need to write again
-  if (w5500.sendFrame(pkt, sizeof(pkt)) < 0)
-  {
-    Serial.println(F("TX-error → flow valve"));
+  const uint16_t frameLen = phxPadLen((uint16_t)(PHX_HDR_LEN + payloadLen));
+
+  int16_t rc = w5500.sendFrame(txBuf, frameLen);
+
+  return rc;
+}
+
+static void gsEnterUnpaired()
+{
+  if (Serial.availableForWrite() >= 64) {
+    Serial.print(F("[LINK] UNPAIRED: "));
+  }
+  gsLink = GS_UNPAIRED;
+  gsAwaitingTelemetry = false;
+  gsCmdRetries = 0;
+}
+
+static void gsSendDiscover()
+{
+  // Discover is broadcast, in UNPAIRED state.
+  gsSeq++;
+  (void)gsSend(MSG_DISCOVER, gsSeq, nullptr, 0, MAC_BROADCAST);
+}
+
+static void gsSendCommand(uint8_t seq, uint8_t rocketStateByte)
+{
+  gsLastCmdState = rocketStateByte;
+  uint8_t p = rocketStateByte;
+  (void)gsSend(MSG_COMMAND, seq, &p, 1, MAC_SENSOR_GIGA);
+}
+
+static void gsPrintTelemetry(uint8_t seq, const uint8_t *payload, uint16_t payloadLen)
+{
+  // FC includes '\0' terminator; print without blocking too hard.
+  uint16_t n = payloadLen;
+  if (n && payload[n - 1] == '\0') n--;
+
+  if (Serial.availableForWrite() < (n + 20)) return;
+
+  Serial.print(F("[TELEM seq="));
+  Serial.print(seq);
+  Serial.print(F("] "));
+
+  // Use Serial.write for speed; payload is ASCII CSV
+  Serial.write(payload, n);
+  Serial.println();
+}
+
+// Drain RX queue and handle AWAKE/TELEMETRY.
+static void gsProcessRx()
+{
+  uint16_t len;
+  while ((len = w5500.readFrame(buffer, sizeof(buffer))) > 0) {
+
+    if (len < PHX_HDR_LEN) {
+      continue;
+    }
+
+    if (buffer[12] != PHX_ETYPE_HI || buffer[13] != PHX_ETYPE_LO) {
+      continue;
+    }
+
+    const uint8_t msgType = buffer[14];
+    const uint8_t seq     = buffer[15];
+    const unsigned long now = millis();
+
+    if (msgType == MSG_AWAKE) {
+      gsLink = GS_AWAKE;
+      gsAwaitingTelemetry = false;
+      gsCmdRetries = 0;
+      gsLastRxMs = now;
+
+      if (Serial.availableForWrite() >= 48) Serial.println(F("[LINK] paired (AWAKE)"));
+      continue;
+    }
+
+    if (msgType == MSG_TELEMETRY) {
+      // Accept telemetry only when paired and we are expecting it.
+      if (gsLink != GS_AWAKE) continue;
+
+      const uint16_t payloadLen = (len > PHX_HDR_LEN) ? (uint16_t)(len - PHX_HDR_LEN) : 0;
+      const uint8_t *payload = buffer + PHX_HDR_LEN;
+
+      // Match the last command seq (ignore stray/out-of-order)
+      if (!gsAwaitingTelemetry || seq != gsLastCmdSeq) {
+        continue;
+      }
+
+      gsLastRxMs = now;
+      gsAwaitingTelemetry = false;
+      gsCmdRetries = 0;
+
+      gsPrintTelemetry(seq, payload, payloadLen);
+      continue;
+    }
+  }
+}
+
+// Drive the ping-pong protocol state machine (send discover/command, retransmit, timeouts).
+static void gsTickLink()
+{
+  const unsigned long now = millis();
+
+  if (gsLink == GS_UNPAIRED) {
+    if (now - gsLastDiscoverMs >= GS_DISCOVER_INTERVAL_MS) {
+      gsLastDiscoverMs = now;
+      gsSendDiscover();
+    }
+    return;
   }
 
-  send_count += 2;
+  // GS_AWAKE
+  if (now - gsLastRxMs > GS_LINK_TIMEOUT_MS) {
+    gsEnterUnpaired();
+    return;
+  }
+
+  if (!gsAwaitingTelemetry) {
+    // Send next command immediately (max telemetry rate)
+    gsLastCmdSeq = ++gsSeq;
+    gsLastCmdTxMs = now;
+    gsCmdRetries = 0;
+    gsAwaitingTelemetry = true;
+    gsSendCommand(gsLastCmdSeq, rocketState);
+    return;
+  }
+
+  // Waiting for telemetry: retransmit if needed
+  if (now - gsLastCmdTxMs >= GS_CMD_RTX_MS) {
+    if (gsCmdRetries < GS_CMD_RTX_MAX) {
+      gsCmdRetries++;
+      gsLastCmdTxMs = now;
+      gsSendCommand(gsLastCmdSeq, gsLastCmdState);
+    } else {
+      gsEnterUnpaired();
+    }
+  }
 }
 
 // void displatyRocketState()
@@ -568,74 +750,7 @@ void sendRocketState(uint8_t currRocketState)
  */
 void receiveSensorData()
 {
-  uint16_t len;
-  while ((len = w5500.readFrame(buffer, sizeof(buffer))) > 0) {
-    // length sanity check
-    if (len < 15) {
-      return;
-    }
-
-    /* 1) Only accept telemetry frames from the flight computer */
-    const bool is_sensor_frame = buffer[12] == 0x88 && buffer[13] == 0x89 &&
-                                 memcmp(buffer + 6, MAC_SENSOR_GIGA, 6) == 0;
-
-    if (!is_sensor_frame) {
-      // Serial.println("Not a sensor frame");
-      return;
-    }
-
-    /* 2) Copy the ASCII payload into a C-string */
-    // Serial.println("Beginning copy");
-    const uint16_t payloadLen = len - 14;
-    static char csv[256]; // plenty for 10 floats
-    if (payloadLen >= sizeof(csv))
-      return; // corrupted – drop
-    memcpy(csv, buffer + 14, payloadLen);
-    csv[payloadLen] = '\0';
-
-    /* 3) Split the CSV into 12 floats */
-    float pt[7], lc[3], tc[2];
-    char *tok = strtok(csv, ",");
-    uint8_t idx = 0;
-    while (tok && idx < 12) {
-      float v = atof(tok);
-      if (idx < 7)
-        pt[idx] = v;
-      else if (idx < 10)
-        lc[idx - 7] = v;
-      else
-        tc[idx - 10] = v;
-      tok = strtok(nullptr, ",");
-      ++idx;
-    }
-    if (idx != 12)
-      return; // malformed – drop
-
-    /* 4) Stream-print JSON ------------------------------------------------ */
-    /* ---- stream out JSON (no inner newlines) ---- */
-    Serial.print(F("{\"value\":{\"pt\":["));
-    for (uint8_t i = 0; i < 7; ++i) {
-      Serial.print(pt[i], 3);
-      if (i < 6)
-        Serial.print(',');
-    }
-    Serial.print(F("],\"tc\":["));
-    for (uint8_t i = 0; i < 2; ++i) {
-      Serial.print(tc[i], 3);
-      if (i < 1)
-        Serial.print(',');
-    }
-    Serial.print(F("],\"lc\":["));
-    for (uint8_t i = 0; i < 3; ++i) {
-      Serial.print(lc[i], 3);
-      if (i < 2)
-        Serial.print(',');
-    }
-    Serial.print(F("],\"fcv\":[],\"timestamp\":\""));
-    printIsoTimestamp();
-    Serial.print(F("\"}}"));
-    Serial.println(); // one newline per object
-  }
+  gsProcessRx();
 }
 
 // ============================================================================
@@ -769,10 +884,7 @@ void loop()
     break;
   }
 
-  if(millis()-lastSend >= 200){
-    lastSend = millis();
-    sendRocketState(rocketState);
-  }
+  gsTickLink();
 
   pre_operationMode = operationMode;
 }
