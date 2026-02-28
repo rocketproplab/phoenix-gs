@@ -360,6 +360,100 @@ void LCD_LaunchMode()
 }
 
 // ============================================================================
+//                            Mode-Setup Logic
+// ============================================================================
+/**
+ * @brief  Reset switches and buttons readings when switching state
+ *
+ * Force the ground station to read all switches/buttons for states for 2s
+ * before entering that state. This allow the debounce time to relax and
+ * ensure all switches/buttons are at the state intended.
+ *
+ * @return void
+ */
+void reset_readings()
+{
+  unsigned long timer;
+
+  lcd.clear(); // wipe previous frame
+  lcd.setCursor(0, 0);
+  lcd.print("  SWITCHING STATE  ");
+  lcd.setCursor(0, 1);
+  lcd.print("      WAIT...      ");
+
+  // Force the ground station to update the switch readings for 2 seconds
+  timer = millis();
+  while (millis() - timer < 2000){
+    // Read all swiches and buttons
+    debounceSwitchRead(&arm);
+    debounceAbortRead(&abort_mission);
+    debounceButtonRead(&launch);
+
+    DebouncedInput *valve_list[] = {&lngPressure,
+                                    &loxPressure,
+                                    &lngFlow,
+                                    &loxFlow,
+                                    &gn2Vent,
+                                    &lngVent,
+                                    &loxVent};
+
+    for (DebouncedInput *item : valve_list)
+    {
+      debounceSwitchRead(item);
+    }
+  }
+}
+
+/**
+ * @brief  Check for safety before entering launch mode
+ *
+ * Only when all valves are claosed, and all switches/buttons are at the
+ * default state, allows to enter into launch mode
+ *
+ * @return true: allow to enter; false; not allowed, check swithch/button states
+ */
+bool launch_mode_check()
+{
+
+  uint8_t curr_rocketState = PRE_ARM;
+
+  for (DebouncedInput *item : valve_list)
+  {
+    debounceSwitchRead(item);
+
+    if (item->currState)
+    {
+      curr_rocketState = openValve(rocketState, item->mask);
+    }
+    else
+    {
+      curr_rocketState = closeValve(rocketState, item->mask);
+    }
+  }
+
+  // Some valves are still opened, closed them before entering into launch mode
+  if (curr_rocketState != PRE_ARM){
+    return false;
+  }
+
+  unsigned int arm_switch = arm.currState;
+  unsigned int abort_button = abort_mission.currState;
+  unsigned int launch_button = launch.currState;
+
+  // One of the launch mode buttons were opened, close them before entering
+  // into launch mode
+  if (arm_switch | abort_button | launch_button){
+    return false;
+  }
+
+  //Force the state to reset to PRE_ARM
+  rocketState = PRE_ARM;
+
+  // Safety entering into launch mode
+  return true;
+}
+
+// ============================================================================
 //                            Mode‑Specific Logic
 // ============================================================================
 /**
@@ -734,33 +828,50 @@ void loop()
   {
   case LAUNCH_MODE:
     // Serial.println("Launch Mode; State = " + String(rocketState, BIN));
-    launch_mode_logic();
 
-    if (operationMode != pre_operationMode){
+    // if the operation mode has changed, force state reset and LCD update
+    if (operationMode != pre_operationMode)
+    {
+      reset_readings();
+
+      // If the safety check fails, force go back to the previous mode
+      if (!launch_mode_check){
+        operationMode = pre_operationMode;
+        break;
+      }
+
       LCD_LaunchMode();
     }
+
+    launch_mode_logic();
 
     break;
 
   case FUELING_MODE:
     // Serial.println("Fueling Mode; State = " + String(rocketState, BIN));
-    fueling_mode_logic();
 
+    // if the operation mode has changed, force state reset and LCD update
     if (operationMode != pre_operationMode)
     {
+      reset_readings();
       LCD_DevAndFueling(1);
     }
+
+    fueling_mode_logic();
 
     break;
 
   case DEV_MODE:
     // Serial.println("Dev Mode; State = " + String(rocketState, BIN));
-    dev_mode_logic();
 
+    // if the operation mode has changed, force state reset and LCD update
     if (operationMode != pre_operationMode)
     {
+      reset_readings();
       LCD_DevAndFueling(0);
     }
+
+    dev_mode_logic();
 
     break;
 
