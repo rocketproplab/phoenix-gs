@@ -382,7 +382,7 @@ void reset_readings()
   lcd.print("      WAIT...      ");
 
   // Force the ground station to update the switch readings for 2 seconds
-  timer = millis();
+  timer = millis(); 
   while (millis() - timer < 2000){
     // Read all swiches and buttons
     debounceSwitchRead(&arm);
@@ -404,10 +404,20 @@ void reset_readings()
   }
 }
 
+void launch_mode_fail_message()
+{
+  lcd.clear(); // wipe previous frame
+  lcd.setCursor(0, 0);
+  lcd.print(" LAUNCH MODE FAILED");
+  lcd.setCursor(0, 1);
+  lcd.print(" CLOSE ALL VALVES  ");
+  delay(1500);
+}
+
 /**
  * @brief  Check for safety before entering launch mode
  *
- * Only when all valves are claosed, and all switches/buttons are at the
+ * Only when all valves are closed, and all switches/buttons are at the
  * default state, allows to enter into launch mode
  *
  * @return true: allow to enter; false; not allowed, check swithch/button states
@@ -415,7 +425,15 @@ void reset_readings()
 bool launch_mode_check()
 {
 
-  uint8_t curr_rocketState = PRE_ARM;
+  DebouncedInput *valve_list[] = {&lngPressure,
+                                  &loxPressure,
+                                  &lngFlow,
+                                  &loxFlow,
+                                  &gn2Vent,
+                                  &lngVent,
+                                  &loxVent};
+
+  uint8_t valve_open_count = 0;
 
   for (DebouncedInput *item : valve_list)
   {
@@ -423,16 +441,14 @@ bool launch_mode_check()
 
     if (item->currState)
     {
-      curr_rocketState = openValve(rocketState, item->mask);
-    }
-    else
-    {
-      curr_rocketState = closeValve(rocketState, item->mask);
+      valve_open_count++;
     }
   }
 
   // Some valves are still opened, closed them before entering into launch mode
-  if (curr_rocketState != PRE_ARM){
+  if (valve_open_count != 0)
+  {
+    launch_mode_fail_message();
     return false;
   }
 
@@ -442,7 +458,8 @@ bool launch_mode_check()
 
   // One of the launch mode buttons were opened, close them before entering
   // into launch mode
-  if (arm_switch | abort_button | launch_button){
+  if (arm_switch || abort_button || launch_button){
+    launch_mode_fail_message();
     return false;
   }
 
@@ -835,7 +852,7 @@ void loop()
       reset_readings();
 
       // If the safety check fails, force go back to the previous mode
-      if (!launch_mode_check){
+      if (!launch_mode_check()){
         operationMode = pre_operationMode;
         break;
       }
