@@ -65,8 +65,6 @@ MODE operationMode = NONE_MODE;
 //                           Ethernet (MAC‑RAW) Setup
 // ─────────────────────────────────────────────────────────────────────────────
 // Change this based on which board is used as flight computer.
-#define MAC_SENSOR_DATA MAC_SENSOR_GIGA
-#define MAC_FLOW_CONTROLLER MAC_SENSOR_GIGA
 
 byte pkt[] = {
     0xff, 0xee, 0xdd, 0xcc, 0xbb, 0xaa, // destination
@@ -636,7 +634,7 @@ void sendRocketState(uint8_t currRocketState)
   }
 
   // --- 2) Flow-valve Arduino ---------------------------------------------
-  memcpy(pkt, MAC_SENSOR_GIGA, 6); // destination
+  memcpy(pkt, MAC_FLOW_VALVE, 6); // destination
   // source MAC is already correct, no need to write again
   if (w5500.sendFrame(pkt, sizeof(pkt)) < 0)
   {
@@ -704,42 +702,42 @@ void receiveSensorData()
     memcpy(csv, buffer + 14, payloadLen);
     csv[payloadLen] = '\0';
 
-    /* 3) Split the CSV into 12 floats */
-    float pt[7], lc[3], tc[2];
+    /* 3) Split the CSV into separate floats */
+    float pt[NUM_PTS], lc[NUM_LCS], tc[NUM_TCS];
     char *tok = strtok(csv, ",");
     uint8_t idx = 0;
-    while (tok && idx < 12) {
+    while (tok && idx < NUM_PTS+NUM_LCS+NUM_TCS) {
       float v = atof(tok);
-      if (idx < 7)
+      if (idx < NUM_PTS)
         pt[idx] = v;
-      else if (idx < 10)
-        lc[idx - 7] = v;
+      else if (idx < NUM_PTS + NUM_LCS)
+        lc[idx - NUM_PTS] = v;
       else
-        tc[idx - 10] = v;
+        tc[idx - (NUM_PTS + NUM_LCS)] = v;
       tok = strtok(nullptr, ",");
       ++idx;
     }
-    if (idx != 12)
+    if (idx != NUM_PTS+NUM_LCS+NUM_TCS)
       return; // malformed – drop
 
     /* 4) Stream-print JSON ------------------------------------------------ */
     /* ---- stream out JSON (no inner newlines) ---- */
     Serial.print(F("{\"value\":{\"pt\":["));
-    for (uint8_t i = 0; i < 7; ++i) {
+    for (uint8_t i = 0; i < NUM_PTS; ++i) {
       Serial.print(pt[i], 3);
-      if (i < 6)
+      if (i < NUM_PTS-1)
         Serial.print(',');
     }
     Serial.print(F("],\"tc\":["));
-    for (uint8_t i = 0; i < 2; ++i) {
+    for (uint8_t i = 0; i < NUM_TCS; ++i) {
       Serial.print(tc[i], 3);
-      if (i < 1)
+      if (i < NUM_TCS-1)
         Serial.print(',');
     }
     Serial.print(F("],\"lc\":["));
-    for (uint8_t i = 0; i < 3; ++i) {
+    for (uint8_t i = 0; i < NUM_LCS; ++i) {
       Serial.print(lc[i], 3);
-      if (i < 2)
+      if (i < NUM_LCS-1)
         Serial.print(',');
     }
     Serial.print(F("],\"fcv\":[],\"timestamp\":\""));
