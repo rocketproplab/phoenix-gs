@@ -60,4 +60,10 @@ const uint8_t MAC_FLOW_VALVE[6] = {0x02, 0x46, 0x4C,
 const uint8_t MAC_SENSOR_GIGA[6] = {0x02, 0x53, 0x49,
                                     0x00, 0x00, 0x04}; // SI:  sensor interface
 
+// ─────────────────────────────────────────────────────────────────────────────
+//                           Sensor Count Setup
+// ─────────────────────────────────────────────────────────────────────────────
+const size_t NUM_PTS = 7;
+const size_t NUM_LCS = 3;
+const size_t NUM_TCS = 5;
 #endif
