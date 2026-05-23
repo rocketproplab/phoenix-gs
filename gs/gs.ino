@@ -404,14 +404,40 @@ void reset_readings()
   }
 }
 
-void launch_mode_fail_message()
+/**
+ * @brief  Give out launch mode fail message depending on the event
+ *
+ * @return void
+ */
+void launch_mode_fail_message(uint8_t event_id)
 {
-  lcd.clear(); // wipe previous frame
-  lcd.setCursor(0, 0);
-  lcd.print(" LAUNCH MODE FAILED");
-  lcd.setCursor(0, 1);
-  lcd.print(" CLOSE ALL VALVES  ");
-  delay(1500);
+
+  switch (event_id){
+
+
+    case (0):
+      lcd.clear(); // wipe previous frame
+      lcd.setCursor(0, 0);
+      lcd.print(" LAUNCH MODE FAILED");
+      lcd.setCursor(0, 1);
+      lcd.print(" CLOSE ALL VALVES  ");
+      delay(1500);
+      break;
+
+    case (1):
+        lcd.clear(); // wipe previous frame
+        lcd.setCursor(0, 0);
+        lcd.print(" LAUNCH MODE FAILED");
+        lcd.setCursor(0, 1);
+        String errorMsg = "";
+        errorMsg = "ARM:" + String(arm.currState) +
+                   ", ABT:" + String(abort_mission.currState) +
+                   ", LAU:" + String(launch.currState);
+
+        lcd.print(errorMsg);
+        delay(1500);
+        break;
+  }
 }
 
 /**
@@ -448,9 +474,13 @@ bool launch_mode_check()
   // Some valves are still opened, closed them before entering into launch mode
   if (valve_open_count != 0)
   {
-    launch_mode_fail_message();
+    launch_mode_fail_message(0);
     return false;
   }
+
+  debounceSwitchRead(&arm);
+  debounceAbortRead(&abort_mission);
+  debounceButtonRead(&launch);
 
   unsigned int arm_switch = arm.currState;
   unsigned int abort_button = abort_mission.currState;
@@ -459,7 +489,7 @@ bool launch_mode_check()
   // One of the launch mode buttons were opened, close them before entering
   // into launch mode
   if (arm_switch || abort_button || launch_button){
-    launch_mode_fail_message();
+    launch_mode_fail_message(1);
     return false;
   }
 
@@ -841,66 +871,69 @@ void loop()
 
   operationMode = getModePress(operationMode); // Mode select
 
-  switch (operationMode)
+  if (operationMode != pre_operationMode)
   {
-  case LAUNCH_MODE:
-    // Serial.println("Launch Mode; State = " + String(rocketState, BIN));
+    reset_readings();
+  }
 
-    // if the operation mode has changed, force state reset and LCD update
-    if (operationMode != pre_operationMode)
+  switch (operationMode)
     {
-      reset_readings();
+    case LAUNCH_MODE:
+      // Serial.println("Launch Mode; State = " + String(rocketState, BIN));
 
-      // If the safety check fails, force go back to the previous mode
-      if (!launch_mode_check()){
-        operationMode = pre_operationMode;
-        break;
+      // if the operation mode has changed, force state reset and LCD update
+      if (operationMode != pre_operationMode)
+      {
+        // If the safety check fails, force go back to the previous mode
+        if (!launch_mode_check())
+        {
+          operationMode = pre_operationMode;
+          break;
+        }
+
+        LCD_LaunchMode(); 
       }
 
-      LCD_LaunchMode();
+      launch_mode_logic();
+
+      break;
+
+    case FUELING_MODE:
+      // Serial.println("Fueling Mode; State = " + String(rocketState, BIN));
+
+      // if the operation mode has changed, force state reset and LCD update
+      if (operationMode != pre_operationMode)
+      {
+        LCD_DevAndFueling(1);
+      }
+
+      fueling_mode_logic();
+
+      break;
+
+    case DEV_MODE:
+      // Serial.println("Dev Mode; State = " + String(rocketState, BIN));
+
+      // if the operation mode has changed, force state reset and LCD update
+      if (operationMode != pre_operationMode)
+      {
+        LCD_DevAndFueling(0);
+      }
+
+      dev_mode_logic();
+
+      break;
+
+    default:
+      // Serial.println("Idling Mode");
+      break;
     }
 
-    launch_mode_logic();
-
-    break;
-
-  case FUELING_MODE:
-    // Serial.println("Fueling Mode; State = " + String(rocketState, BIN));
-
-    // if the operation mode has changed, force state reset and LCD update
-    if (operationMode != pre_operationMode)
+    if (millis() - lastSend >= 200)
     {
-      reset_readings();
-      LCD_DevAndFueling(1);
+      lastSend = millis();
+      sendRocketState(rocketState);
     }
 
-    fueling_mode_logic();
-
-    break;
-
-  case DEV_MODE:
-    // Serial.println("Dev Mode; State = " + String(rocketState, BIN));
-
-    // if the operation mode has changed, force state reset and LCD update
-    if (operationMode != pre_operationMode)
-    {
-      reset_readings();
-      LCD_DevAndFueling(0);
-    }
-
-    dev_mode_logic();
-
-    break;
-
-  default:
-    // Serial.println("Idling Mode");
-    break;
+    pre_operationMode = operationMode;
   }
-
-  if(millis()-lastSend >= 200){
-    lastSend = millis();
-    sendRocketState(rocketState);
-  }
-
-  pre_operationMode = operationMode;
-}
