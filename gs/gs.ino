@@ -60,6 +60,7 @@ enum MODE
 
 MODE pre_operationMode = NONE_MODE;
 MODE operationMode = NONE_MODE;
+bool launchEntryLocked = false;
 
 // ─────────────────────────────────────────────────────────────────────────────
 //                           Ethernet (MAC‑RAW) Setup
@@ -221,6 +222,17 @@ MODE getModePress(MODE PRE_MODE)
   debounceButtonRead(&dev_M);
 
   unsigned int launch_button = launch_M.currState;
+
+  // Special logic to prevent invalid entry to launch mode
+  if (!launch_button)
+  {
+    launchEntryLocked = false;
+  }
+  if (launch_button && launchEntryLocked)
+  {
+    return PRE_MODE;
+  }
+
   unsigned int fueling_button = fueling_M.currState;
   unsigned int dev_button = dev_M.currState;
 
@@ -885,8 +897,20 @@ void loop()
         // If the safety check fails, force go back to the previous mode
         if (!launch_mode_check())
         {
+          launchEntryLocked = true;
           operationMode = pre_operationMode;
-          break;
+          delay(2000);
+
+          if (operationMode == FUELING_MODE)
+          {
+            LCD_DevAndFueling(1);
+          }
+
+          if (operationMode == DEV_MODE)
+          {
+            LCD_DevAndFueling(0);
+            break;
+          }
         }
 
         LCD_LaunchMode(); 
