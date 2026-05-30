@@ -416,15 +416,14 @@ void reset_readings()
 
 /**
  * @brief  Give out launch mode fail message depending on the event
- *
+ * event_id 0: one or more of the valve switches are open
+ * event_id 1: one or more of the: ARM, ABORT, or LAUNCH are ON
  * @return void
  */
 void launch_mode_fail_message(uint8_t event_id)
 {
 
   switch (event_id){
-
-
     case (0):
       lcd.clear(); // wipe previous frame
       lcd.setCursor(0, 0);

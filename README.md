@@ -12,7 +12,7 @@ Works with the launch box to send valve control signals with protected logic
 ## Ground station finite state machine
 * One of the following mode will be ran during each void loop() call
 * Dev Mode: all valves can be individually controlled
-* Fuel Mode: only the vent valves (LGN-V, LOX-V, GN2-V) can be opened; all flow and pressure valves are forced to close (LGN-F, LOX-f, LNG-P, LOX-P all closed)
+* Fuel Mode: only the vent valves (LGN-V, LOX-V, GN2-V) can be opened; all flow and pressure valves are forced to close (LNG-F, LOX-f, LNG-P, LOX-P all closed)
 * Launch Mode: ARM and then launch; Emergency Stop can be triggered anytime to open all vent valevs to release pressure
 
 ## Binary encoding of the buttons/switches
