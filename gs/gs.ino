@@ -60,13 +60,12 @@ enum MODE
 
 MODE pre_operationMode = NONE_MODE;
 MODE operationMode = NONE_MODE;
+bool launchEntryLocked = false;
 
 // ─────────────────────────────────────────────────────────────────────────────
 //                           Ethernet (MAC‑RAW) Setup
 // ─────────────────────────────────────────────────────────────────────────────
 // Change this based on which board is used as flight computer.
-#define MAC_SENSOR_DATA MAC_SENSOR_GIGA
-#define MAC_FLOW_CONTROLLER MAC_SENSOR_GIGA
 
 byte pkt[] = {
     0xff, 0xee, 0xdd, 0xcc, 0xbb, 0xaa, // destination
@@ -223,6 +222,17 @@ MODE getModePress(MODE PRE_MODE)
   debounceButtonRead(&dev_M);
 
   unsigned int launch_button = launch_M.currState;
+
+  // Special logic to prevent invalid entry to launch mode
+  if (!launch_button)
+  {
+    launchEntryLocked = false;
+  }
+  if (launch_button && launchEntryLocked)
+  {
+    return PRE_MODE;
+  }
+
   unsigned int fueling_button = fueling_M.currState;
   unsigned int dev_button = dev_M.currState;
 
@@ -357,6 +367,146 @@ void LCD_LaunchMode()
     lcd.setCursor(0, 3);
     lcd.print("Ad Astra Per Aspera!");
   }
+}
+
+// ============================================================================
+//                            Mode-Setup Logic
+// ============================================================================
+/**
+ * @brief  Reset switches and buttons readings when switching state
+ *
+ * Force the ground station to read all switches/buttons for states for 2s
+ * before entering that state. This allow the debounce time to relax and
+ * ensure all switches/buttons are at the state intended.
+ *
+ * @return void
+ */
+void reset_readings()
+{
+  unsigned long timer;
+
+  lcd.clear(); // wipe previous frame
+  lcd.setCursor(0, 0);
+  lcd.print("  SWITCHING STATE  ");
+  lcd.setCursor(0, 1);
+  lcd.print("      WAIT...      ");
+
+  // Force the ground station to update the switch readings for 2 seconds
+  timer = millis(); 
+  while (millis() - timer < 2000){
+    // Read all swiches and buttons
+    debounceSwitchRead(&arm);
+    debounceAbortRead(&abort_mission);
+    debounceButtonRead(&launch);
+
+    DebouncedInput *valve_list[] = {&lngPressure,
+                                    &loxPressure,
+                                    &lngFlow,
+                                    &loxFlow,
+                                    &gn2Vent,
+                                    &lngVent,
+                                    &loxVent};
+
+    for (DebouncedInput *item : valve_list)
+    {
+      debounceSwitchRead(item);
+    }
+  }
+}
+
+/**
+ * @brief  Give out launch mode fail message depending on the event
+ * event_id 0: one or more of the valve switches are open
+ * event_id 1: one or more of the: ARM, ABORT, or LAUNCH are ON
+ * @return void
+ */
+void launch_mode_fail_message(uint8_t event_id)
+{
+
+  switch (event_id){
+    case (0):
+      lcd.clear(); // wipe previous frame
+      lcd.setCursor(0, 0);
+      lcd.print(" LAUNCH MODE FAILED");
+      lcd.setCursor(0, 1);
+      lcd.print(" CLOSE ALL VALVES  ");
+      delay(1500);
+      break;
+
+    case (1):
+        lcd.clear(); // wipe previous frame
+        lcd.setCursor(0, 0);
+        lcd.print(" LAUNCH MODE FAILED");
+        lcd.setCursor(0, 1);
+        String errorMsg = "";
+        errorMsg = "ARM:" + String(arm.currState) +
+                   ", ABT:" + String(abort_mission.currState) +
+                   ", LAU:" + String(launch.currState);
+
+        lcd.print(errorMsg);
+        delay(1500);
+        break;
+  }
+}
+
+/**
+ * @brief  Check for safety before entering launch mode
+ *
+ * Only when all valves are closed, and all switches/buttons are at the
+ * default state, allows to enter into launch mode
+ *
+ * @return true: allow to enter; false; not allowed, check swithch/button states
+ */
+bool launch_mode_check()
+{
+
+  DebouncedInput *valve_list[] = {&lngPressure,
+                                  &loxPressure,
+                                  &lngFlow,
+                                  &loxFlow,
+                                  &gn2Vent,
+                                  &lngVent,
+                                  &loxVent};
+
+  uint8_t valve_open_count = 0;
+
+  for (DebouncedInput *item : valve_list)
+  {
+    debounceSwitchRead(item);
+
+    if (item->currState)
+    {
+      valve_open_count++;
+    }
+  }
+
+  // Some valves are still opened, closed them before entering into launch mode
+  if (valve_open_count != 0)
+  {
+    launch_mode_fail_message(0);
+    return false;
+  }
+
+  debounceSwitchRead(&arm);
+  debounceAbortRead(&abort_mission);
+  debounceButtonRead(&launch);
+
+  unsigned int arm_switch = arm.currState;
+  unsigned int abort_button = abort_mission.currState;
+  unsigned int launch_button = launch.currState;
+
+  // One of the launch mode buttons were opened, close them before entering
+  // into launch mode
+  if (arm_switch || abort_button || launch_button){
+    launch_mode_fail_message(1);
+    return false;
+  }
+
+  //Force the state to reset to PRE_ARM
+  rocketState = PRE_ARM;
+
+  // Safety entering into launch mode
+  return true;
 }
 
 // ============================================================================
@@ -525,7 +675,7 @@ void sendRocketState(uint8_t currRocketState)
   }
 
   // --- 2) Flow-valve Arduino ---------------------------------------------
-  memcpy(pkt, MAC_SENSOR_GIGA, 6); // destination
+  memcpy(pkt, MAC_FLOW_VALVE, 6); // destination
   // source MAC is already correct, no need to write again
   if (w5500.sendFrame(pkt, sizeof(pkt)) < 0)
   {
@@ -593,42 +743,42 @@ void receiveSensorData()
     memcpy(csv, buffer + 14, payloadLen);
     csv[payloadLen] = '\0';
 
-    /* 3) Split the CSV into 12 floats */
-    float pt[7], lc[3], tc[2];
+    /* 3) Split the CSV into separate floats */
+    float pt[NUM_PTS], lc[NUM_LCS], tc[NUM_TCS];
     char *tok = strtok(csv, ",");
     uint8_t idx = 0;
-    while (tok && idx < 12) {
+    while (tok && idx < NUM_PTS+NUM_LCS+NUM_TCS) {
       float v = atof(tok);
-      if (idx < 7)
+      if (idx < NUM_PTS)
         pt[idx] = v;
-      else if (idx < 10)
-        lc[idx - 7] = v;
+      else if (idx < NUM_PTS + NUM_LCS)
+        lc[idx - NUM_PTS] = v;
       else
-        tc[idx - 10] = v;
+        tc[idx - (NUM_PTS + NUM_LCS)] = v;
       tok = strtok(nullptr, ",");
       ++idx;
     }
-    if (idx != 12)
+    if (idx != NUM_PTS+NUM_LCS+NUM_TCS)
       return; // malformed – drop
 
     /* 4) Stream-print JSON ------------------------------------------------ */
     /* ---- stream out JSON (no inner newlines) ---- */
     Serial.print(F("{\"value\":{\"pt\":["));
-    for (uint8_t i = 0; i < 7; ++i) {
+    for (uint8_t i = 0; i < NUM_PTS; ++i) {
       Serial.print(pt[i], 3);
-      if (i < 6)
+      if (i < NUM_PTS-1)
         Serial.print(',');
     }
     Serial.print(F("],\"tc\":["));
-    for (uint8_t i = 0; i < 2; ++i) {
+    for (uint8_t i = 0; i < NUM_TCS; ++i) {
       Serial.print(tc[i], 3);
-      if (i < 1)
+      if (i < NUM_TCS-1)
         Serial.print(',');
     }
     Serial.print(F("],\"lc\":["));
-    for (uint8_t i = 0; i < 3; ++i) {
+    for (uint8_t i = 0; i < NUM_LCS; ++i) {
       Serial.print(lc[i], 3);
-      if (i < 2)
+      if (i < NUM_LCS-1)
         Serial.print(',');
     }
     Serial.print(F("],\"fcv\":[],\"timestamp\":\""));
@@ -730,49 +880,81 @@ void loop()
 
   operationMode = getModePress(operationMode); // Mode select
 
-  switch (operationMode)
+  if (operationMode != pre_operationMode)
   {
-  case LAUNCH_MODE:
-    // Serial.println("Launch Mode; State = " + String(rocketState, BIN));
-    launch_mode_logic();
-
-    if (operationMode != pre_operationMode){
-      LCD_LaunchMode();
-    }
-
-    break;
-
-  case FUELING_MODE:
-    // Serial.println("Fueling Mode; State = " + String(rocketState, BIN));
-    fueling_mode_logic();
-
-    if (operationMode != pre_operationMode)
-    {
-      LCD_DevAndFueling(1);
-    }
-
-    break;
-
-  case DEV_MODE:
-    // Serial.println("Dev Mode; State = " + String(rocketState, BIN));
-    dev_mode_logic();
-
-    if (operationMode != pre_operationMode)
-    {
-      LCD_DevAndFueling(0);
-    }
-
-    break;
-
-  default:
-    // Serial.println("Idling Mode");
-    break;
+    reset_readings();
   }
 
-  if(millis()-lastSend >= 200){
-    lastSend = millis();
-    sendRocketState(rocketState);
-  }
+  switch (operationMode)
+    {
+    case LAUNCH_MODE:
+      // Serial.println("Launch Mode; State = " + String(rocketState, BIN));
 
-  pre_operationMode = operationMode;
-}
+      // if the operation mode has changed, force state reset and LCD update
+      if (operationMode != pre_operationMode)
+      {
+        // If the safety check fails, force go back to the previous mode
+        if (!launch_mode_check())
+        {
+          launchEntryLocked = true;
+          operationMode = pre_operationMode;
+          delay(2000);
+
+          if (operationMode == FUELING_MODE)
+          {
+            LCD_DevAndFueling(1);
+          }
+
+          if (operationMode == DEV_MODE)
+          {
+            LCD_DevAndFueling(0);
+            break;
+          }
+        }
+
+        LCD_LaunchMode(); 
+      }
+
+      launch_mode_logic();
+
+      break;
+
+    case FUELING_MODE:
+      // Serial.println("Fueling Mode; State = " + String(rocketState, BIN));
+
+      // if the operation mode has changed, force state reset and LCD update
+      if (operationMode != pre_operationMode)
+      {
+        LCD_DevAndFueling(1);
+      }
+
+      fueling_mode_logic();
+
+      break;
+
+    case DEV_MODE:
+      // Serial.println("Dev Mode; State = " + String(rocketState, BIN));
+
+      // if the operation mode has changed, force state reset and LCD update
+      if (operationMode != pre_operationMode)
+      {
+        LCD_DevAndFueling(0);
+      }
+
+      dev_mode_logic();
+
+      break;
+
+    default:
+      // Serial.println("Idling Mode");
+      break;
+    }
+
+    if (millis() - lastSend >= 200)
+    {
+      lastSend = millis();
+      sendRocketState(rocketState);
+    }
+
+    pre_operationMode = operationMode;
+  }

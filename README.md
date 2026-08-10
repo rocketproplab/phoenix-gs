@@ -2,8 +2,18 @@
 Phoenix ground station with Arduino \
 Works with the launch box to send valve control signals with protected logic
 
+## Latest fix after static fire on Febrary 15, 2026
+* A switch latch bug was discovered during the static fire
+* Trigger condition: Launch Mode -> ARM Switch ON-> Launch Button -> DEV Mode -> ARM Swtich OFF -> Launch Button
+* When performing a launch (usually cold flow before static fire), and close the ARM switch outside of the launch mode, there will be a very brief moment that the ground station will sent ARM ON state to the flight computer when entering the launch mode again. This is due to the debounce switch reading mechanism.
+* This branch has been archieved in ``static-fire-Feb2026-record``
+* The current main branch has patched this fix to enforce a 2 second sensor read stabalization time when swtiching state, as well as a state check when entering the launch mode. Any invalid state will prevent entering the launch mode and revert back to the previous state.
+
 ## Ground station finite state machine
 * One of the following mode will be ran during each void loop() call
+* Dev Mode: all valves can be individually controlled
+* Fuel Mode: only the vent valves (LGN-V, LOX-V, GN2-V) can be opened; all flow and pressure valves are forced to close (LNG-F, LOX-f, LNG-P, LOX-P all closed)
+* Launch Mode: ARM and then launch; Emergency Stop can be triggered anytime to open all vent valevs to release pressure
 
 ## Binary encoding of the buttons/switches
 
@@ -26,7 +36,7 @@ null_mask = 0b0000000;
 
 
 ## Launch Mode (Risk: Low)
-Launch sequence has four stages \
+Launch sequence has four stages
 
 ### PRE-ARM (0000000)
 * default state, nothing happens
@@ -80,15 +90,13 @@ Launch sequence has four stages \
 ![My Image](./lib/diagrams/pheonix-fc-launch-control-dev.svg)
 
 
-## Fuel and valve diagram
-<img src="./lib/diagrams/fuel-diagram.jpg" alt="drawing" width="400"/>
 
 ## Draw.io Link
 * https://drive.google.com/file/d/1tbEu6RL3mTaqcmE_wz8DDxYVTB-fJ5dZ/view?usp=sharing
 
 # Launch Terminal Physical Specifications
 ## Ethernet
-[W5500 Ethernet LAN Network Module](https://www.amazon.com/HiLetgo-Ethernet-Network-Support-Microcontroller/dp/B0CDWX9VQ5)
+* [W5500 Ethernet LAN Network Module](https://www.amazon.com/HiLetgo-Ethernet-Network-Support-Microcontroller/dp/B0CDWX9VQ5)
 
 
 # Resource
