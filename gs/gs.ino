@@ -863,6 +863,13 @@ static void printIsoTimestamp()
   Serial.print('S');
 }
 
+//Changes start here
+uint8_t pre_rocketState = PRE_ARM; 
+int count = 0;
+uint8_t stateLastSent = PRE_ARM;
+int sent_count = 0;
+//Changes start here
+
 // ============================================================================
 //                                    loop()
 // ============================================================================
@@ -954,7 +961,129 @@ void loop()
     {
       lastSend = millis();
       sendRocketState(rocketState);
+      //Changes start here
+      if((rocketState != stateLastSent)) {
+        sent_count++;
+        Serial.println("ROCKET STATE SENT");
+        Serial.print("S");
+        Serial.println(sent_count);
+        Serial.print("                         ");
+        Serial.print("      LNG PRES:       ");
+        if((rocketState & LNG_PRES_MASK) != 0) Serial.println("ON ");
+        else Serial.println("OFF");
+        Serial.print("      GN2 VENT:       ");
+        if((rocketState & GN2_VENT_MASK) != 0) Serial.print("ON ");
+        else Serial.print("OFF");
+        Serial.print("      LOX PRES:       ");
+        if((rocketState & LOX_PRES_MASK) != 0) Serial.println("ON ");
+        else Serial.println("OFF");
+        Serial.print("      LNG VENT:       ");
+        if((rocketState & LNG_VENT_MASK) != 0) Serial.print("ON ");
+        else Serial.print("OFF");
+        Serial.print("      LNG FLOW:       ");
+        if((rocketState & LNG_FLOW_MASK) != 0) Serial.println("ON ");
+        else Serial.println("OFF");
+        Serial.print("      LOX VENT:       ");
+        if((rocketState & LOX_VENT_MASK) != 0) Serial.print("ON ");
+        else Serial.print("OFF");
+        Serial.print("      LOX FLOW:       ");
+        if((rocketState & LOX_FLOW_MASK) != 0) Serial.println("ON ");
+        else Serial.println("OFF");
+        if(operationMode == LAUNCH_MODE) {
+          Serial.print("In Launch: ");
+          if(rocketState == PRE_ARM) Serial.println("PRE ARM");
+          else if(rocketState == ABORT) Serial.println("ABORT");
+          else if(rocketState == ARMED) Serial.println("ARMED");
+          else if(rocketState == LAUNCH) Serial.println("LAUNCH");
+
+        }
+        Serial.println("=========================================================="); 
+        stateLastSent = rocketState;
+      }
+      //Changes end here
     }
 
+    //Changes start here
+    if((rocketState != pre_rocketState) || (operationMode != pre_operationMode)) {
+      count++;
+      Serial.print("Count: ");
+      Serial.println(count);
+      if(rocketState != pre_rocketState) Serial.println("State Change");
+      else if (operationMode != pre_operationMode) Serial.println("Mode Change");
+      Serial.print("CURRENT Rocket State:    ");
+      Serial.print("      LNG PRES:       ");
+      if((rocketState & LNG_PRES_MASK) != 0) Serial.println("ON ");
+      else Serial.println("OFF");
+      Serial.print("      GN2 VENT:       ");
+      if((rocketState & GN2_VENT_MASK) != 0) Serial.print("ON ");
+      else Serial.print("OFF");
+      Serial.print("      LOX PRES:       ");
+      if((rocketState & LOX_PRES_MASK) != 0) Serial.println("ON ");
+      else Serial.println("OFF");
+      Serial.print("      LNG VENT:       ");
+      if((rocketState & LNG_VENT_MASK) != 0) Serial.print("ON ");
+      else Serial.print("OFF");
+      Serial.print("      LNG FLOW:       ");
+      if((rocketState & LNG_FLOW_MASK) != 0) Serial.println("ON ");
+      else Serial.println("OFF");
+      Serial.print("      LOX VENT:       ");
+      if((rocketState & LOX_VENT_MASK) != 0) Serial.print("ON ");
+      else Serial.print("OFF");
+      Serial.print("      LOX FLOW:       ");
+      if((rocketState & LOX_FLOW_MASK) != 0) Serial.println("ON ");
+      else Serial.println("OFF");
+
+      Serial.print("CURRENT Operation Mode: ");
+      if(operationMode == NONE_MODE) Serial.println("NONE");
+      else if(operationMode == LAUNCH_MODE) Serial.println("LAUNCH");
+      else if(operationMode == FUELING_MODE) Serial.println("FUELING");
+      else if(operationMode == DEV_MODE) Serial.println("DEV");
+
+      Serial.print("PREVIOUS Rocket State:   ");
+      Serial.print("      LNG PRES:       ");
+      if((pre_rocketState & LNG_PRES_MASK) != 0) Serial.println("ON ");
+      else Serial.println("OFF");
+      Serial.print("      GN2 VENT:       ");
+      if((pre_rocketState & GN2_VENT_MASK) != 0) Serial.print("ON ");
+      else Serial.print("OFF");
+      Serial.print("      LOX PRES:       ");
+      if((pre_rocketState & LOX_PRES_MASK) != 0) Serial.println("ON ");
+      else Serial.println("OFF");
+      Serial.print("      LNG VENT:       ");
+      if((pre_rocketState & LNG_VENT_MASK) != 0) Serial.print("ON ");
+      else Serial.print("OFF");
+      Serial.print("      LNG FLOW:       ");
+      if((pre_rocketState & LNG_FLOW_MASK) != 0) Serial.println("ON ");
+      else Serial.println("OFF");
+      Serial.print("      LOX VENT:       ");
+      if((pre_rocketState & LOX_VENT_MASK) != 0) Serial.print("ON ");
+      else Serial.print("OFF");
+      Serial.print("      LOX FLOW:       ");
+      if((pre_rocketState & LOX_FLOW_MASK) != 0) Serial.println("ON ");
+      else Serial.println("OFF");
+
+      Serial.print("PREVIOUS Operation Mode: ");
+      if(pre_operationMode == NONE_MODE) Serial.println("NONE");
+      else if(pre_operationMode == LAUNCH_MODE) Serial.println("LAUNCH");
+      else if(pre_operationMode == FUELING_MODE) Serial.println("FUELING");
+      else if(pre_operationMode == DEV_MODE) Serial.println("DEV"); 
+      
+
+      if(operationMode == LAUNCH_MODE) {
+        Serial.print("In Launch: ");
+        if(rocketState == PRE_ARM) Serial.println("PRE ARM");
+        else if(rocketState == ABORT) Serial.println("ABORT");
+        else if(rocketState == ARMED) Serial.println("ARMED");
+        else if(rocketState == LAUNCH) Serial.println("LAUNCH");
+
+      }
+      Serial.println("==========================================================");
+
+    }
+    //Changes end here
+
     pre_operationMode = operationMode;
+    //Changes start here
+    pre_rocketState = rocketState;
+    //Changes end here
   }
