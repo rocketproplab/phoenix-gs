@@ -23,6 +23,7 @@ const uint8_t LNG_VENT_MASK = 0b0000100;
 const uint8_t LOX_FLOW_MASK = 0b0000010;
 const uint8_t LOX_VENT_MASK = 0b0000001;
 const uint8_t NULL_MASK = 0b0000000;
+const uint8_t FAIL_OPEN_MASK = 0b0000101; //LNG-V or LOX-V FAIL OPEN MASKS
 
 // ─────────────────────────────────────────────────────────────────────────────
 //                                 Pin Mapping
