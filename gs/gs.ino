@@ -342,7 +342,7 @@ void LCD_DevAndFueling(int mode)
       show_on = is_powered;    // normal for fail-closed valves
     }
 
-    lcd.print(show_on ? "OPEN " : "CL");
+    lcd.print(show_on ? "OPN " : "CLD");
 
   }
 }
