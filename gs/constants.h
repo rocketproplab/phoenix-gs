@@ -29,10 +29,10 @@ const uint8_t FAIL_OPEN_MASK = 0b0000101; //LNG-V or LOX-V FAIL OPEN MASKS
 //                                 Pin Mapping
 // ─────────────────────────────────────────────────────────────────────────────
 const int PIN_LNG_P = 48;     // GN2 flow connected to LNG
-const int PIN_LOX_P = 19;     // GN2 flow connected to LOX
+const int PIN_LOX_P = 46;     // GN2 flow connected to LOX  --- BROKEN PIN
 const int PIN_LNG_F = 49;
 const int PIN_LOX_F = 47;
-const int PIN_GN2_V = 46;
+const int PIN_GN2_V = 19;
 const int PIN_LNG_V = 45;
 const int PIN_LOX_V = 44;
 const int PIN_ARM = 18;
