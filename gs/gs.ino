@@ -342,7 +342,7 @@ void LCD_DevAndFueling(int mode)
       show_on = is_powered;    // normal for fail-closed valves
     }
 
-    lcd.print(show_on ? "ON " : "OFF");
+    lcd.print(show_on ? "OPEN " : "CLOSED");
 
   }
 }
@@ -408,7 +408,7 @@ void reset_readings()
   lcd.print("      WAIT...      ");
 
   // Force the ground station to update the switch readings for 2 seconds
-  timer = millis(); 
+  timer = millis();
   while (millis() - timer < 2000){
     // Read all swiches and buttons
     debounceSwitchRead(&arm);
@@ -928,7 +928,7 @@ void loop()
           }
         }
 
-        LCD_LaunchMode(); 
+        LCD_LaunchMode();
       }
 
       launch_mode_logic();
