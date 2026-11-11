@@ -288,7 +288,7 @@ void LCD_DevAndFueling(int mode)
 
   /* ---------- 1. Prepare the state list ---------- */
   DebouncedInput *valve_list[] = {
-      &lngPressure, &gn2Vent, &loxPressure, &lngVent, &lngFlow, &loxVent, &loxFlow};
+      &lngPressure, &loxPressure, &gn2Vent, &lngVent, &lngFlow, &loxVent, &loxFlow};
 
   /* ---------- 2. Prepare names (index 0 is the Dev-Mode header) ---------- */
   char **itemNames;
