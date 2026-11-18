@@ -288,16 +288,16 @@ void LCD_DevAndFueling(int mode)
 
   /* ---------- 1. Prepare the state list ---------- */
   DebouncedInput *valve_list[] = {
-      &lngPressure, &gn2Vent, &loxPressure, &lngVent, &lngFlow, &loxVent, &loxFlow};
+      &lngPressure, &loxPressure, &gn2Vent, &lngVent, &lngFlow, &loxVent, &loxFlow};
 
   /* ---------- 2. Prepare names (index 0 is the Dev-Mode header) ---------- */
   char **itemNames;
 
   const char *itemNames_Dev[8] = {
-      "DEV MODE", "LNG_P", "GN2-V", "LOX-P", "LNG-V", "LNG-F", "LOX-V", "LOX-F"};
+      "DEV MODE", "LNG_P", "LOX-P", "GN2-V", "LNG-V", "LNG-F", "LOX-V", "LOX-F"};
 
   const char *itemNames_Fueling[8] = {
-      "FUEL MODE", "LNG_P", "GN2-V", "LOX-P", "LNG-V", "LNG-F", "LOX-V", "LOX-F"};
+      "FUEL MODE", "LNG_P", "LOX-P", "GN2-V", "LNG-V", "LNG-F", "LOX-V", "LOX-F"};
 
   // Decide on the mode to operate on
   if (mode == 0)
@@ -327,7 +327,23 @@ void LCD_DevAndFueling(int mode)
     lcd.print(':');
 
     // i-1 maps to valve_list index (0-6)
-    lcd.print((valve_list[i - 1]->mask & rocketState) ? "ON " : "OFF");
+    uint8_t valve_mask = valve_list[i-1]->mask;
+    bool is_powered = (valve_mask & rocketState) != 0;
+    bool show_on;
+
+    // Fail-open valves (LNG-V, LOX-V): unpowered = open = shown as ON.
+    // Display only. rocketState and the packet sent to the FC are unchanged.
+    if (valve_mask & FAIL_OPEN_MASK)
+    {
+      show_on = !is_powered;   // invert for fail-open valves
+    }
+    else
+    {
+      show_on = is_powered;    // normal for fail-closed valves
+    }
+
+    lcd.print(show_on ? "OPN " : "CLD");
+
   }
 }
 
@@ -392,7 +408,7 @@ void reset_readings()
   lcd.print("      WAIT...      ");
 
   // Force the ground station to update the switch readings for 2 seconds
-  timer = millis(); 
+  timer = millis();
   while (millis() - timer < 2000){
     // Read all swiches and buttons
     debounceSwitchRead(&arm);
@@ -912,7 +928,7 @@ void loop()
           }
         }
 
-        LCD_LaunchMode(); 
+        LCD_LaunchMode();
       }
 
       launch_mode_logic();
