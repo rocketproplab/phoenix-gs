@@ -10,7 +10,6 @@
 // Individual valve masks
 const uint8_t LNG_PRES_MASK = 0b1000000; // Fail-Closed
 const uint8_t LOX_PRES_MASK = 0b0100000; // Fail-Closed
-const uint8_t GN2_VENT_MASK = 0b0010000; // Fail-Closed
 const uint8_t LNG_FLOW_MASK = 0b0001000; // Fail-Closed
 const uint8_t LNG_VENT_MASK = 0b0000100; // Fail-Open
 const uint8_t LOX_FLOW_MASK = 0b0000010; // Fail-Closed
@@ -33,7 +32,6 @@ const int PIN_LNG_P = 48;
 const int PIN_LOX_P = 46;
 const int PIN_LNG_F = 49;
 const int PIN_LOX_F = 47;
-const int PIN_GN2_V = 19;
 const int PIN_LNG_V = 45;
 const int PIN_LOX_V = 44;
 const int PIN_ARM = 18;

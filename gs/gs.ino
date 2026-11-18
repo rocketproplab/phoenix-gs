@@ -39,11 +39,12 @@ struct DebouncedInput
   unsigned int lastState;
   unsigned long lastDebounceTime;
   uint8_t mask;
+  bool isFailOpen;
 };
 
 // Instances – declared here for global lifetime; initialised in setup()
 DebouncedInput lngPressure, loxPressure, lngFlow, loxFlow;
-DebouncedInput gn2Vent, lngVent, loxVent;
+DebouncedInput lngVent, loxVent;
 DebouncedInput arm, abort_mission, launch;
 DebouncedInput launch_M, fueling_M, dev_M;
 
@@ -288,16 +289,16 @@ void LCD_DevAndFueling(int mode)
 
   /* ---------- 1. Prepare the state list ---------- */
   DebouncedInput *valve_list[] = {
-      &lngPressure, &loxPressure, &gn2Vent, &lngVent, &lngFlow, &loxVent, &loxFlow};
+      &lngPressure, &loxPressure, &lngVent, &lngFlow, &loxVent, &loxFlow};
 
   /* ---------- 2. Prepare names (index 0 is the Dev-Mode header) ---------- */
   char **itemNames;
 
   const char *itemNames_Dev[8] = {
-      "DEV MODE", "LNG_P", "LOX-P", "GN2-V", "LNG-V", "LNG-F", "LOX-V", "LOX-F"};
+      "DEV MODE", "LNG_P", "LOX-P", "LNG-V", "LNG-F", "LOX-V", "LOX-F"};
 
   const char *itemNames_Fueling[8] = {
-      "FUEL MODE", "LNG_P", "LOX-P", "GN2-V", "LNG-V", "LNG-F", "LOX-V", "LOX-F"};
+      "FUEL MODE", "LNG_P", "LOX-P", "LNG-V", "LNG-F", "LOX-V", "LOX-F"};
 
   // Decide on the mode to operate on
   if (mode == 0)
@@ -419,7 +420,6 @@ void reset_readings()
                                     &loxPressure,
                                     &lngFlow,
                                     &loxFlow,
-                                    &gn2Vent,
                                     &lngVent,
                                     &loxVent};
 
@@ -480,7 +480,6 @@ bool launch_mode_check()
                                   &loxPressure,
                                   &lngFlow,
                                   &loxFlow,
-                                  &gn2Vent,
                                   &lngVent,
                                   &loxVent};
 
@@ -600,8 +599,7 @@ void fueling_mode_logic()
 {
   uint8_t initial_rocketState = rocketState;
 
-  DebouncedInput *valve_list[] = {&gn2Vent,
-                                  &lngVent,
+  DebouncedInput *valve_list[] = {&lngVent,
                                   &loxVent};
 
   for (DebouncedInput *item : valve_list)
@@ -645,7 +643,6 @@ void dev_mode_logic()
                                   &loxPressure,
                                   &lngFlow,
                                   &loxFlow,
-                                  &gn2Vent,
                                   &lngVent,
                                   &loxVent};
 
@@ -822,12 +819,13 @@ void setup()
   // Start in safe state
   rocketState = PRE_ARM;
 
+
+
   // Configure all control inputs as pull‑ups (active‑LOW)
   pinMode(PIN_LNG_P, INPUT_PULLUP);
   pinMode(PIN_LOX_P, INPUT_PULLUP);
   pinMode(PIN_LNG_F, INPUT_PULLUP);
   pinMode(PIN_LOX_F, INPUT_PULLUP);
-  pinMode(PIN_GN2_V, INPUT_PULLUP);
   pinMode(PIN_LNG_V, INPUT_PULLUP);
   pinMode(PIN_LOX_V, INPUT_PULLUP);
   pinMode(PIN_ARM, INPUT_PULLUP);
@@ -842,7 +840,6 @@ void setup()
   loxPressure = {PIN_LOX_P, LOW, LOW, 0, LOX_PRES_MASK};
   lngFlow = {PIN_LNG_F, LOW, LOW, 0, LNG_FLOW_MASK};
   loxFlow = {PIN_LOX_F, LOW, LOW, 0, LOX_FLOW_MASK};
-  gn2Vent = {PIN_GN2_V, LOW, LOW, 0, GN2_VENT_MASK};
   lngVent = {PIN_LNG_V, LOW, LOW, 0, LNG_VENT_MASK};
   loxVent = {PIN_LOX_V, LOW, LOW, 0, LOX_VENT_MASK};
   arm = {PIN_ARM, LOW, LOW, 0, NULL_MASK};
@@ -851,6 +848,19 @@ void setup()
   launch_M = {PIN_LAUNCH_M, LOW, LOW, 0, NULL_MASK};
   fueling_M = {PIN_FUELING_M, LOW, LOW, 0, NULL_MASK};
   dev_M = {PIN_DEV_M, LOW, LOW, 0, NULL_MASK};
+
+  lngPressure   = {PIN_LNG_P, LOW, LOW, 0, LNG_PRES_MASK, (FAIL_OPEN_MASK & LNG_PRES_MASK) != 0};
+  loxPressure   = {PIN_LOX_P, LOW, LOW, 0, LOX_PRES_MASK, (FAIL_OPEN_MASK & LOX_PRES_MASK) != 0};
+  lngFlow       = {PIN_LNG_F, LOW, LOW, 0, LNG_FLOW_MASK, (FAIL_OPEN_MASK & LNG_FLOW_MASK) != 0};
+  loxFlow       = {PIN_LOX_F, LOW, LOW, 0, LOX_FLOW_MASK, (FAIL_OPEN_MASK & LOX_FLOW_MASK) != 0};
+  lngVent       = {PIN_LNG_V, LOW, LOW, 0, LNG_VENT_MASK, (FAIL_OPEN_MASK & LNG_VENT_MASK) != 0};
+  loxVent       = {PIN_LOX_V, LOW, LOW, 0, LOX_VENT_MASK, (FAIL_OPEN_MASK & LOX_VENT_MASK) != 0};
+  arm           = {PIN_ARM, LOW, LOW, 0, NULL_MASK, false};
+  abort_mission = {PIN_ABORT, LOW, LOW, 0, NULL_MASK, false};
+  launch        = {PIN_LAUNCH, LOW, LOW, 0, NULL_MASK, false};
+  launch_M      = {PIN_LAUNCH_M, LOW, LOW, 0, NULL_MASK, false};
+  fueling_M     = {PIN_FUELING_M, LOW, LOW, 0, NULL_MASK, false};
+  dev_M         = {PIN_DEV_M, LOW, LOW, 0, NULL_MASK, false};
 
   // Bring up Ethernet in MAC‑RAW mode
   Serial.println("Ethernet Module Starting...");
