@@ -835,32 +835,20 @@ void setup()
   pinMode(PIN_FUELING_M, INPUT_PULLUP);
   pinMode(PIN_DEV_M, INPUT_PULLUP);
 
-  // Map physical pins to DebouncedInput objects
-  lngPressure = {PIN_LNG_P, LOW, LOW, 0, LNG_PRES_MASK};
-  loxPressure = {PIN_LOX_P, LOW, LOW, 0, LOX_PRES_MASK};
-  lngFlow = {PIN_LNG_F, LOW, LOW, 0, LNG_FLOW_MASK};
-  loxFlow = {PIN_LOX_F, LOW, LOW, 0, LOX_FLOW_MASK};
-  lngVent = {PIN_LNG_V, LOW, LOW, 0, LNG_VENT_MASK};
-  loxVent = {PIN_LOX_V, LOW, LOW, 0, LOX_VENT_MASK};
-  arm = {PIN_ARM, LOW, LOW, 0, NULL_MASK};
-  abort_mission = {PIN_ABORT, LOW, LOW, 0, NULL_MASK};
-  launch = {PIN_LAUNCH, LOW, LOW, 0, NULL_MASK};
-  launch_M = {PIN_LAUNCH_M, LOW, LOW, 0, NULL_MASK};
-  fueling_M = {PIN_FUELING_M, LOW, LOW, 0, NULL_MASK};
-  dev_M = {PIN_DEV_M, LOW, LOW, 0, NULL_MASK};
-
-  lngPressure   = {PIN_LNG_P, LOW, LOW, 0, LNG_PRES_MASK, (FAIL_OPEN_MASK & LNG_PRES_MASK) != 0};
-  loxPressure   = {PIN_LOX_P, LOW, LOW, 0, LOX_PRES_MASK, (FAIL_OPEN_MASK & LOX_PRES_MASK) != 0};
-  lngFlow       = {PIN_LNG_F, LOW, LOW, 0, LNG_FLOW_MASK, (FAIL_OPEN_MASK & LNG_FLOW_MASK) != 0};
-  loxFlow       = {PIN_LOX_F, LOW, LOW, 0, LOX_FLOW_MASK, (FAIL_OPEN_MASK & LOX_FLOW_MASK) != 0};
-  lngVent       = {PIN_LNG_V, LOW, LOW, 0, LNG_VENT_MASK, (FAIL_OPEN_MASK & LNG_VENT_MASK) != 0};
-  loxVent       = {PIN_LOX_V, LOW, LOW, 0, LOX_VENT_MASK, (FAIL_OPEN_MASK & LOX_VENT_MASK) != 0};
-  arm           = {PIN_ARM, LOW, LOW, 0, NULL_MASK, false};
-  abort_mission = {PIN_ABORT, LOW, LOW, 0, NULL_MASK, false};
-  launch        = {PIN_LAUNCH, LOW, LOW, 0, NULL_MASK, false};
-  launch_M      = {PIN_LAUNCH_M, LOW, LOW, 0, NULL_MASK, false};
-  fueling_M     = {PIN_FUELING_M, LOW, LOW, 0, NULL_MASK, false};
-  dev_M         = {PIN_DEV_M, LOW, LOW, 0, NULL_MASK, false};
+  // Map physical pins to DebouncedInput structs
+  //                 PIN  States:curr/prev  DB time   bitmask     if it's fail_open
+  lngPressure   = {PIN_LNG_P,       LOW, LOW, 0, LNG_PRES_MASK, (FAIL_OPEN_MASK & LNG_PRES_MASK) != 0};
+  loxPressure   = {PIN_LOX_P,       LOW, LOW, 0, LOX_PRES_MASK, (FAIL_OPEN_MASK & LOX_PRES_MASK) != 0};
+  lngFlow       = {PIN_LNG_F,       LOW, LOW, 0, LNG_FLOW_MASK, (FAIL_OPEN_MASK & LNG_FLOW_MASK) != 0};
+  loxFlow       = {PIN_LOX_F,       LOW, LOW, 0, LOX_FLOW_MASK, (FAIL_OPEN_MASK & LOX_FLOW_MASK) != 0};
+  lngVent       = {PIN_LNG_V,       LOW, LOW, 0, LNG_VENT_MASK, (FAIL_OPEN_MASK & LNG_VENT_MASK) != 0};
+  loxVent       = {PIN_LOX_V,       LOW, LOW, 0, LOX_VENT_MASK, (FAIL_OPEN_MASK & LOX_VENT_MASK) != 0};
+  arm           = {PIN_ARM,         LOW, LOW, 0, NULL_MASK,     false}; // NULL mask cannot be fail_open
+  abort_mission = {PIN_ABORT,       LOW, LOW, 0, NULL_MASK,     false};
+  launch        = {PIN_LAUNCH,      LOW, LOW, 0, NULL_MASK,     false};
+  launch_M      = {PIN_LAUNCH_M,    LOW, LOW, 0, NULL_MASK,     false};
+  fueling_M     = {PIN_FUELING_M,   LOW, LOW, 0, NULL_MASK,     false};
+  dev_M         = {PIN_DEV_M,       LOW, LOW, 0, NULL_MASK,     false};
 
   // Bring up Ethernet in MAC‑RAW mode
   Serial.println("Ethernet Module Starting...");
