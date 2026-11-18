@@ -29,11 +29,11 @@ const uint8_t FAIL_OPEN_MASK = 0b0000101; //LNG-V or LOX-V FAIL OPEN MASKS
 //                                 Pin Mapping
 // ─────────────────────────────────────────────────────────────────────────────
 // Note: Pin 19 is broken
-const int PIN_LNG_P = 48;     
-const int PIN_LOX_P = 46;     
+const int PIN_LNG_P = 48;
+const int PIN_LOX_P = 46;
 const int PIN_LNG_F = 49;
 const int PIN_LOX_F = 47;
-const int PIN_GN2_V = 19;       
+const int PIN_GN2_V = 19;
 const int PIN_LNG_V = 45;
 const int PIN_LOX_V = 44;
 const int PIN_ARM = 18;
@@ -66,6 +66,4 @@ const uint8_t MAC_SENSOR_GIGA[6] = {0x02, 0x53, 0x49,
 //                           Sensor Count Setup
 // ─────────────────────────────────────────────────────────────────────────────
 const size_t NUM_PTS = 7;
-const size_t NUM_LCS = 3;
-const size_t NUM_TCS = 5;
 #endif
