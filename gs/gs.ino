@@ -329,22 +329,9 @@ void LCD_DevAndFueling(int mode)
 
     // i-1 maps to valve_list index (0-6)
     uint8_t valve_mask = valve_list[i-1]->mask;
-    bool is_powered = (valve_mask & rocketState) != 0;
-    bool show_on;
-
-    // Fail-open valves (LNG-V, LOX-V): unpowered = open = shown as ON.
-    // Display only. rocketState and the packet sent to the FC are unchanged.
-    if (valve_mask & FAIL_OPEN_MASK)
-    {
-      show_on = !is_powered;   // invert for fail-open valves
-    }
-    else
-    {
-      show_on = is_powered;    // normal for fail-closed valves
-    }
-
-    lcd.print(show_on ? "OPN " : "CLD");
-
+    bool isEnergized = (valve_mask & rocketState) != 0;
+    bool isPhysicallyOpen = valve_list[i-1]->isFailOpen ? !isEnergized : isEnergized;
+    lcd.print(isPhysicallyOpen ? "ON " : "OFF");
   }
 }
 
