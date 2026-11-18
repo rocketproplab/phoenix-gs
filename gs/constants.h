@@ -64,4 +64,6 @@ const uint8_t MAC_SENSOR_GIGA[6] = {0x02, 0x53, 0x49,
 //                           Sensor Count Setup
 // ─────────────────────────────────────────────────────────────────────────────
 const size_t NUM_PTS = 7;
+const size_t NUM_LCS = 3;
+const size_t NUM_TCS = 5;
 #endif
