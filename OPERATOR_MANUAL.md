@@ -1,6 +1,8 @@
 # Phoenix Rocket Ground Station: Operator & Flight Controller Manual
 
-This manual is for Launch Conductors, Chief Engineers, Fluids Leads, and Ground Station operators. It details the physical operation, operating modes, safety interlocks, and procedural rules of the **Phoenix Ground Control Box**.
+> [!IMPORTANT]
+> **Operational Reference for Launch Conductors, Chief Engineers, and Fluids Leads**
+> This manual details the physical console operation, operating modes, safety interlocks, and procedural rules of the **Phoenix Ground Control Box**. For repository setup and firmware compilation, refer to [README.md](README.md).
 
 ---
 
@@ -12,14 +14,15 @@ The Ground Station is a standalone, hardwired control console. It communicates d
 * **6 Valve Control Levers:** Three-position toggle levers on the console faceplate controlling individual propellant and pressurization valves.
   * **Lever DOWN / OFF:** De-energized / No electrical power to the valve coil.
   * **Lever UP / ON:** Energized / Electrical power applied to the valve coil.
-  > [!NOTE]
-  > **Unlabeled Toggle Lever:** There is a 7th physical toggle switch on the console faceplate that is unlabeled and unwired (a remnant of a removed pneumatic line). Operators must ignore this switch; it is completely disconnected and has no electrical connection to the rocket or ground station firmware.
-
 * **3 Mode Selection Buttons:** Momentary pushbuttons (`DEV MODE`, `FUELING MODE`, `LAUNCH MODE`) to transition between operational states.
 * **Covered Safety ARM Toggle:** A guarded toggle switch protected by a spring-loaded safety cover, used to initiate pressurization during countdown.
 * **Momentary LAUNCH Pushbutton:** Triggers engine ignition and main propellant flow.
 * **Mechanical ABORT Mushroom Button:** A prominent red latching emergency-stop button. Depressing it locks mechanically in the down position.
 * **20x4 LCD Screen:** Displays current operating mode, live valve states (`OPN` vs `CLD`), countdown stages, and safety rejection messages.
+
+> [!NOTE]
+> **Unlabeled Toggle Lever on Console Faceplate:**
+> There is a 7th physical toggle switch on the console faceplate that is unlabeled and unwired (a remnant of a removed pneumatic line). Operators must ignore this switch; it is completely disconnected and has no electrical connection to the rocket or ground station firmware.
 
 ---
 
