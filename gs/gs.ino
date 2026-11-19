@@ -62,6 +62,7 @@ enum MODE
 MODE pre_operationMode = NONE_MODE;
 MODE operationMode = NONE_MODE;
 bool launchEntryLocked = false;
+bool vent_ready_to_open = false; // Latch to guarantee manual cycling before vents can open
 
 // ─────────────────────────────────────────────────────────────────────────────
 //                           Ethernet (MAC‑RAW) Setup
@@ -608,44 +609,45 @@ void launch_mode_logic()
   switch (rocketState)
   {
   case PRE_ARM:
+    vent_ready_to_open = false;
     if (abort_button)
     {
       rocketState = ABORT;
     }
-    else if (vent_switch)
+    else if (vent_switch && !arm_switch)
     {
       rocketState = VENTS_CLOSED;
     }
-    // Note: flipping arm_switch while vent_switch is DOWN is ignored (cannot pressurize through open vents)
     break;
   case VENTS_CLOSED:
     if (abort_button)
     {
       rocketState = ABORT;
     }
-    else if (!vent_switch)
+    else if (vent_switch)
     {
-      rocketState = PRE_ARM; // Operator toggled vents open
+      vent_ready_to_open = true; // Confirmed UP in VENTS_CLOSED state
+      if (arm_switch)
+      {
+        rocketState = ARMED; // Vents verified closed -> open press valves
+      }
     }
-    else if (arm_switch)
+    else if (!vent_switch && vent_ready_to_open)
     {
-      rocketState = ARMED; // Vents verified closed -> open press valves
+      vent_ready_to_open = false;
+      rocketState = PRE_ARM; // Operator manually toggled vents open
     }
     break;
   case ARMED:
+    vent_ready_to_open = false; // Reset: disarm must verify switch UP before opening vents
     if (abort_button)
     {
       rocketState = ABORT;
     }
     else if (!arm_switch)
     {
-      // Disarmed: if vent switch is still UP, hold vents closed; else return to PRE_ARM
-      rocketState = vent_switch ? VENTS_CLOSED : PRE_ARM;
-    }
-    else if (!vent_switch)
-    {
-      // Vents opened while armed -> immediate cutoff of pressurization
-      rocketState = PRE_ARM;
+      // Disarmed: pressures snap shut immediately; vents remain powered closed!
+      rocketState = VENTS_CLOSED;
     }
     else if (launch_button)
     {
@@ -761,7 +763,7 @@ void sendRocketState(uint8_t currRocketState)
   // --- 1) Relief-valve Arduino -------------------------------------------
   memcpy(pkt, MAC_RELIEF_VALVE, 6);       // destination
   memcpy(pkt + 6, MAC_GROUND_STATION, 6); // source
-  if (w5500.sendFrame(pkt, sizeof(pkt)) < 0)
+  if (w5500.sendFrame(pkt, sizeof(pkt)) != sizeof(pkt))
   {
     Serial.println(F("TX-error → relief valve"));
   }
@@ -769,7 +771,7 @@ void sendRocketState(uint8_t currRocketState)
   // --- 2) Flow-valve Arduino ---------------------------------------------
   memcpy(pkt, MAC_FLOW_VALVE, 6); // destination
   // source MAC is already correct, no need to write again
-  if (w5500.sendFrame(pkt, sizeof(pkt)) < 0)
+  if (w5500.sendFrame(pkt, sizeof(pkt)) != sizeof(pkt))
   {
     Serial.println(F("TX-error → flow valve"));
   }

@@ -479,6 +479,9 @@ TEST_CASE(Test_Disarm_HoldCount_Behavior) {
     // Count is held: Disarm (flip ARM switch DOWN, Vent Switch remains UP)
     set_switch_down(PIN_ARM);
     debounce_settle();
+    launch_mode_logic(); // Transitions from ARMED to VENTS_CLOSED
+
+    // In VENTS_CLOSED with vent switch UP, loop latches vent_ready_to_open = true
     launch_mode_logic();
 
     // Pressure valves must close immediately; vents remain closed holding pressure
@@ -495,12 +498,12 @@ TEST_CASE(Test_Disarm_HoldCount_Behavior) {
     ASSERT_HEX_EQ(rocketState, PRE_ARM);
 }
 
-TEST_CASE(Test_SafetyCutoff_VentDroppedWhileArmed) {
+TEST_CASE(Test_ArmedMode_VentSwitchIgnored) {
     reset_test_environment();
     operationMode = LAUNCH_MODE;
     pre_operationMode = LAUNCH_MODE;
 
-    // Arm the rocket properly
+    // 1. Arm the rocket properly
     set_switch_up(PIN_VENT_SW);
     debounce_settle();
     launch_mode_logic();
@@ -509,15 +512,84 @@ TEST_CASE(Test_SafetyCutoff_VentDroppedWhileArmed) {
     launch_mode_logic();
     ASSERT_HEX_EQ(rocketState, ARMED);
 
-    // Accidental misoperation: Vent switch dropped DOWN while ARM is still UP!
+    // 2. Operator pushes down Vent Switch while ARM is still UP
     set_switch_down(PIN_VENT_SW);
     debounce_settle();
     launch_mode_logic();
 
-    // CUTOFF INVARIANT: Pressure must be cut immediately to prevent dumping GN2 out open vents!
+    // INVARIANT: Vent switch MUST be ignored while ARMED!
+    // Cannot drop from ARMED to PRE_ARM directly. Must stay ARMED.
+    ASSERT_HEX_EQ(rocketState, ARMED);
+    ASSERT_TRUE(rocketState & FAIL_OPEN_MASK); // Vents stay powered closed
+    ASSERT_TRUE(rocketState & LNG_PRES_MASK);  // Pressure stays powered open
+    ASSERT_TRUE(rocketState & LOX_PRES_MASK);
+
+    // 3. To de-escalate, operator flips ARM switch DOWN
+    set_switch_down(PIN_ARM);
+    debounce_settle();
+    launch_mode_logic();
+
+    // PNEUMATIC SEQUENCING PROTECTION:
+    // Even though Vent Switch is DOWN, console MUST NOT immediately open vents!
+    // Pressures snap shut, but vents STAY POWERED SHUT in VENTS_CLOSED!
+    ASSERT_HEX_EQ(rocketState, VENTS_CLOSED);
+    ASSERT_TRUE(rocketState & FAIL_OPEN_MASK); // Vents stay powered closed
+    ASSERT_FALSE(rocketState & LNG_PRES_MASK); // Pressures are shut off
+    ASSERT_FALSE(rocketState & LOX_PRES_MASK);
+
+    // Running additional logic loops still holds VENTS_CLOSED (no simultaneous depower!)
+    launch_mode_logic();
+    ASSERT_HEX_EQ(rocketState, VENTS_CLOSED);
+
+    // 4. Operator manually cycles Vent switch UP, then DOWN to command vent opening
+    set_switch_up(PIN_VENT_SW);
+    debounce_settle();
+    launch_mode_logic();
+    ASSERT_HEX_EQ(rocketState, VENTS_CLOSED);
+
+    set_switch_down(PIN_VENT_SW);
+    debounce_settle();
+    launch_mode_logic();
+    ASSERT_HEX_EQ(rocketState, PRE_ARM); // Cleanly transitions to PRE_ARM!
+    ASSERT_FALSE(rocketState & FAIL_OPEN_MASK); // Vents now unpower and spring open
+}
+
+TEST_CASE(Test_CannotCloseVentsWhileArmIsUp) {
+    reset_test_environment();
+    operationMode = LAUNCH_MODE;
+    pre_operationMode = LAUNCH_MODE;
+    rocketState = PRE_ARM;
+    
+    // In PRE_ARM: ARM switch is UP, Vent switch is DOWN
+    set_switch_up(PIN_ARM);
+    set_switch_down(PIN_VENT_SW);
+    debounce_settle();
+    launch_mode_logic();
     ASSERT_HEX_EQ(rocketState, PRE_ARM);
+
+    // Operator flips Vent switch UP while ARM is still UP
+    set_switch_up(PIN_VENT_SW);
+    debounce_settle();
+    launch_mode_logic();
+
+    // INVARIANT: Must NOT enter VENTS_CLOSED or ARMED! Must stay PRE_ARM!
+    ASSERT_HEX_EQ(rocketState, PRE_ARM);
+    ASSERT_FALSE(rocketState & FAIL_OPEN_MASK);
     ASSERT_FALSE(rocketState & LNG_PRES_MASK);
     ASSERT_FALSE(rocketState & LOX_PRES_MASK);
+
+    // Operator resets both switches DOWN
+    set_switch_down(PIN_VENT_SW);
+    set_switch_down(PIN_ARM);
+    debounce_settle();
+    launch_mode_logic();
+    ASSERT_HEX_EQ(rocketState, PRE_ARM);
+
+    // Now that ARM is DOWN, flipping Vent switch UP cleanly transitions to VENTS_CLOSED
+    set_switch_up(PIN_VENT_SW);
+    debounce_settle();
+    launch_mode_logic();
+    ASSERT_HEX_EQ(rocketState, VENTS_CLOSED);
 }
 
 TEST_CASE(Test_ValveLeversIgnoredInLaunchMode) {
@@ -656,6 +728,34 @@ TEST_CASE(Test_InFlightLockout_Launch) {
     debounce_settle();
     MODE m = getModePress(LAUNCH_MODE);
     ASSERT_EQ(m, LAUNCH_MODE); // Locked out!
+}
+
+TEST_CASE(Test_ProtocolA_PostLaunch_Abort_To_Dev) {
+    reset_test_environment();
+    operationMode = LAUNCH_MODE;
+    rocketState = LAUNCH;
+
+    // 1. While in active burn (LAUNCH), DEV mode button is locked out
+    set_button_pressed(PIN_DEV_M);
+    debounce_settle();
+    MODE m = getModePress(LAUNCH_MODE);
+    ASSERT_EQ(m, LAUNCH_MODE);
+
+    // 2. Operator triggers Engine Cutoff / Safing via ABORT mushroom button
+    set_abort_latched();
+    debounce_settle();
+    launch_mode_logic();
+    ASSERT_HEX_EQ(rocketState, ABORT); // 0V to all valves, vents spring open!
+
+    // 3. Clear abort button (unlatch UP) with all levers DOWN
+    set_abort_unlatched();
+    debounce_settle();
+
+    // 4. Operator presses DEV MODE -> Transition accepted!
+    set_button_pressed(PIN_DEV_M);
+    debounce_settle();
+    m = getModePress(LAUNCH_MODE);
+    ASSERT_EQ(m, DEV_MODE);
 }
 
 // ============================================================================

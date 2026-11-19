@@ -74,14 +74,16 @@ In **DEV** and **FUELING** modes, the LCD displays a two-column, 4-row status ta
 * The screen reports the **true physical state of the valve**, accounting for whether it is fail-closed or fail-open. An unpowered vent correctly displays `OPN`, while an unpowered flow valve displays `CLD`.
 
 > [!WARNING]
-> **Console Levers Correlate to Electrical Power, NOT Valve Direction:**
-> Console toggle levers strictly control whether **electrical power** is applied to a valve's solenoid coil (`UP = POWERED`, `DOWN = UNPOWERED`).
-> Because the vent valves (`LNG-V` and `LOX-V`) are **Fail-Open (Normally Open)**:
-> * Setting a vent lever to **DOWN / OFF removes electrical power, leaving the valve physically OPEN (`OPN`)**.
-> * Setting a vent lever to **UP / ON applies power to force the valve CLOSED (`CLD`)**.
+> ### Console Levers Correlate to Electrical Power, NOT Mechanical Valve Position
+> 1. **Switches Represent Powered Coil States:** Console toggle levers strictly control whether **electrical power** is applied to a valve's solenoid coil (`UP = POWERED`, `DOWN = UNPOWERED`).
+>    * For Fail-Open vents (`LNG-V` and `LOX-V`): Lever **DOWN / OFF cuts electrical power, leaving the valve physically OPEN (`OPN`)**. Lever **UP / ON applies power to force the valve CLOSED (`CLD`)**.
+>    * For Fail-Closed valves (`LNG-P`, `LOX-P`, `LNG-F`, `LOX-F`): Lever DOWN means unpowered/closed, and Lever UP means powered/open.
 > 
-> For fail-closed valves (`LNG-P`, `LOX-P`, `LNG-F`, `LOX-F`), lever DOWN means unpowered/closed, and lever UP means powered/open.
-> **Never assume Lever DOWN means closed for all valves! Always verify the LCD readout for the true physical valve state (`OPN` vs `CLD`).**
+> 2. **The Ground Station CANNOT Validate Pneumatic or Mechanical States:**
+>    * The LCD only represents the **electronic state of the valves on the rocket's MOSFET driver board** (meaning the LCD can only guarantee whether a valve *should* be open or closed based on electrical power commanded by the avionics system).
+>    * The Ground Station has **no sensor feedback** from physical valve poppets, limit switches, or pneumatic seat seals.
+>    * **Actual physical valve state can ONLY be validated by pneumatics and telemetry:** Cryogenic valves may stick, bind, or lag due to ice condensation or cold-soak stiction. Ground crew, Fluids leads, and Launch Conductors must verify actual pneumatic seating via pad camera frost plume cutoffs, tank pressure transducer rise/decay rates, and audible pad checks.
+>    * **Never assume the poppet has physically moved just because the LCD updated.** Always confirm with pneumatic indicators!
 
 ---
 
@@ -213,7 +215,16 @@ If a hold is called while in `ARM MODE`:
 2. Pressure valves instantly close (`LNG-P` and `LOX-P` cut to 0V).
 3. If the Vent Switch remains UP, the console safely returns to **`VENTS CLOSED`** (`V:CLD P:CLD F:CLD`), holding tank pressure without adding GN2.
 4. If full tank depressurization is ordered, flip the **Vent Switch DOWN**; vents instantly spring open and the console returns to **`PRE-ARM MODE`** (`V:OPN P:CLD F:CLD`).
-5. *Automatic Cutoff:* If the Vent Switch is accidentally flipped DOWN while `ARM` is UP, the firmware instantly cuts pressurization and drops to `PRE-ARM` to prevent pressurizing through open vents.
+5. *Strict Staged De-escalation & Armed Vent Lockout:* While in `ARM MODE`, the Vent Switch is **completely ignored**. Bumping or toggling the Vent Switch will not disarm the rocket or drop to `PRE-ARM`. To de-escalate from `ARM MODE`, the operator must first disarm via the guarded `ARM` switch DOWN (transitioning into `VENTS CLOSED`), and only then toggle the Vent Switch DOWN to return to `PRE-ARM MODE`.
+6. *Pre-Arm Lockout if ARM is UP:* In `PRE-ARM MODE`, flipping the Vent Switch UP while the guarded `ARM` switch is left UP is **strictly locked out** (the console will refuse to close vents and will remain safely in `PRE-ARM`). Both switches must be returned to DOWN before initiating the countdown sequence.
+7. *Pneumatic Sequencing Protection (Edge Case 4):* If the Vent Switch was accidentally flipped DOWN while in `ARM MODE`, flipping the guarded `ARM` switch DOWN cuts GN2 pressurization immediately and transitions to `VENTS CLOSED`. The firmware **holds vents energized shut** until the operator manually cycles the Vent Switch UP and then DOWN. This guarantees that pressures fully close first and vents NEVER depower at the same instant, preventing high-pressure blowdown through laggy pneumatic valves.
+
+> [!IMPORTANT]
+> ### Direct De-escalation from ARMED to PRE-ARM is Strictly Impossible
+> Operators **cannot** transition directly from `ARM MODE` to `PRE-ARM MODE`. De-escalation must structurally pass through `VENTS CLOSED`:
+> * If the Vent Switch is in the **DOWN** position when the operator lowers the guarded `ARM` switch, the console **cuts pressurization (`LNG-P`, `LOX-P` to 0V) but REFUSES to open the vents**, remaining safely locked in `VENTS CLOSED` (`V:CLD P:CLD F:CLD`).
+> * **Mandatory Operator Cycling Action:** To vent tanks and enter `PRE-ARM MODE`, the operator **must physically flick the Vent Switch UP (latching the closed state) and then flick it DOWN (commanding vent opening)**.
+> * This physical cycling requirement guarantees that pressure and vent valves are never depowered simultaneously, eliminating the risk of pneumatic lag allowing vents to open before high-pressure supply valves seat shut.
 
 ### Step 6: Launch / Ignition Trigger
 1. With the rocket in `ARM MODE` and all flight go-criteria satisfied, press the momentary **`LAUNCH`** pushbutton.
@@ -229,6 +240,25 @@ If a hold is called while in `ARM MODE`:
    * Main flow valves (`LNG-F`, `LOX-F`) open.
    * Pressure valves stay open; vent valves stay powered shut.
    * The rocket has transitioned to active burn.
+
+### Step 7: Post-Burn Engine Cutoff & Pad Safing Protocol (Protocol A)
+In static fire and test stand operations, the Ground Station intentionally **locks out all mode selection buttons (`DEV MODE`, `FUELING MODE`)** while in `LAUNCH` (`0x6F`) to prevent accidental mid-burn mode transitions. 
+
+To conclude an engine test burn and safe the vehicle:
+1. **Engine Cutoff (MECO):** Depress the large red **`ABORT`** mushroom button.
+   * Coil power drops to 0V instantaneously across all valves.
+   * Main flow valves (`LNG-F`, `LOX-F`) and GN2 pressurization valves (`LNG-P`, `LOX-P`) snap **CLOSED**.
+   * Cryogenic tank vents (`LNG-V`, `LOX-V`) spring **OPEN** to blow down residual tank pressure.
+   * The LCD displays `MISSION ABORT! ALL VENTS OPENED!`.
+2. **Console Switch Audit:**
+   * Flip the guarded **`ARM`** toggle switch **DOWN**.
+   * Flip the **Vent Actuation Switch** **DOWN**.
+   * Physically verify **all 6 valve toggle levers are DOWN / OFF**.
+3. **Clear Abort & Transition to DEV Mode:**
+   * Twist / pull the red **`ABORT`** mushroom button **UP** to unlatch.
+   * Press **`DEV MODE`** (or **`FUELING MODE`**).
+   * The **Abort Exit Interlock** verifies all 6 toggle levers are DOWN (if any lever is UP, it rejects entry with `ABORT EXIT BLOCKED`).
+   * The console executes the 2-second switch stabilization delay and safely enters `DEV MODE` with 0V across all valve coils.
 
 ---
 
@@ -317,6 +347,8 @@ If an operator unlatches the ABORT button and presses `DEV MODE` or `FUELING MOD
 * **In-Flight Mode Lockout:** Once the rocket is in `VENTS_CLOSED`, `ARM MODE`, or `LAUNCH`, **all mode buttons (DEV / FUEL) are completely locked out**. An operator cannot accidentally switch modes or dump pressure while armed. The operator must explicitly disarm (flip ARM and Vent switches down) or hit ABORT.
 * **E-Stop Reset Lockout:** The console will not allow mode transitions out of an abort until the ABORT button is physically pulled back UP.
 * **Pressurant Conservation (Decoupled 2-Stage Arming):** Requires the operator to flip the Vent Switch to seal vents (`VENTS CLOSED`) and visually verify seating on pad cameras before the covered ARM switch will command GN2 pressure valves open. Opening pressure valves is hard-locked in software if the Vent Switch is DOWN.
+* **Strict Staged De-escalation & Armed Vent Lockout:** While in `ARM MODE`, toggling the Vent Switch is completely ignored. Bumping or toggling the Vent Switch will not disarm the rocket or drop to `PRE-ARM`. To de-escalate from `ARM MODE`, the operator must first disarm via the guarded ARM switch DOWN (transitioning into `VENTS CLOSED`), and only then toggle the Vent Switch DOWN to return to `PRE-ARM MODE`.
+* **Pre-Arm Lockout if ARM is UP:** Flipping the Vent Switch UP while the guarded ARM switch is left UP will not close vents or arm the rocket; it remains safely in `PRE-ARM`. Both switches must be lowered before re-attempting nominal countdown.
 * **Zero Power Spikes:** FSM state transitions are protected so that failed launch attempts do not power-cycle or glitch valve coils.
 
 ---
@@ -326,4 +358,5 @@ If an operator unlatches the ABORT button and presses `DEV MODE` or `FUELING MOD
 * **Manual DEV Mode Misinputs:** In `DEV MODE`, all valve levers are live. The console will **not** stop an operator from opening a main propellant flow valve while tanks are pressurized if DEV mode is active.
 * **Manual Valve Commands Post-Recovery:** While the console prevents exiting Abort with levers UP, once DEV mode is entered, all levers are live. The console will not prevent an operator from manually toggling a valve ON after entering DEV mode.
 * **Pneumatic / Bottle Pressure Monitoring:** The console cannot detect whether GN2 supply bottles are depleted or if manual hand valves on the pad are closed.
+* **Pneumatic / Mechanical Valve State Validation:** The Ground Station LCD displays the **electronic commanded state of the valve coils on the rocket's MOSFET driver board** (whether 24V coil power is commanded). It cannot detect physical valve poppet positions, ice-induced sluggishness, or mechanical seal failure. Actual valve positions must be validated by Fluids and Launch Operations using physical indicators (tank pressure rise/decay telemetry, pad camera frost plume cutoffs, and acoustic checks).
 * **Pad Power Faults:** If external 24V solenoid power supplies fail at the pad, the console will report commanded states, but valves will physically revert to their unpowered states (vents open, flows closed).

@@ -25,6 +25,7 @@ The ground station manages 6 active propellant and pressurization valves. Tank v
 > * `GN2-V` has been removed from the plumbing architecture; GN2 is split between `LNG-P` and `LOX-P`. The toggle switch previously dedicated to GN2 (next to the ARM switch) is now repurposed as the **Vent Actuation Switch** in Launch Mode.
 > * **Cryogenic Boil-Off & Pad Power:** Because tank vents are Fail-Open, keeping their levers DOWN (unpowered) leaves vents naturally open to vent boil-off without drawing battery power or heating solenoid coils.
 > * **Loss of Signal (Fail-Safe):** In any power loss or cable disconnect, all coils drop to 0V: flows snap shut and vents spring wide open.
+> * **Commanded Electrical State vs. Physical Pneumatics:** The Ground Station LCD displays the **electronic state of the valve coils on the rocket's MOSFET driver board** (whether 24V coil power is commanded). It cannot detect physical valve poppet positions or cryo seal stiction. Actual valve seating must be confirmed via physical pneumatic indicators (pad camera frost plume cutoffs, tank pressure transducer rise/decay rates). The console switches represent the commanded electrical state.
 
 ---
 
@@ -127,6 +128,14 @@ flowchart TD
 6. **Abort Exit Interlock:**
    * Exiting `MISSION ABORT` into `DEV MODE` or `FUELING MODE` is **hard-blocked** if any valve toggle lever is left UP / ON.
    * Displays `"ABORT EXIT BLOCKED / FLICK ALL LEVERS / TO OFF / DOWN"` and keeps all valve outputs at 0V until levers are confirmed DOWN.
+7. **Strict Staged De-escalation & Armed Vent Lockout:**
+   * While in `ARMED` mode, the Vent Switch is **completely ignored**. An operator cannot disarm or dump pressure by toggling the vent switch.
+   * To return to `PRE-ARM`, the operator must disarm via the guarded ARM switch DOWN first (transitioning to `VENTS_CLOSED`, which immediately shuts GN2 pressurization), followed by Vent Switch DOWN (opening vents).
+   * In `PRE-ARM`, flipping the Vent Switch UP while the guarded ARM switch is UP is strictly locked out. Both switches must be DOWN before closing vents.
+8. **Post-Burn Mode Lockout & Protocol A Safing:**
+   * Once the `LAUNCH` button is pressed (`LAUNCH = 0b01101111`), the engine is in active burn. Mode buttons (`DEV`, `FUEL`) are strictly locked out.
+   * To terminate a burn or safe the vehicle post-test (Protocol A), the operator depresses the **ABORT** button (instantly cutting power across all valves to shut off flow/pressure and blow down vents).
+   * Returning to `DEV MODE` requires lowering all switches and levers, unlatching the ABORT button, and pressing `DEV MODE`.
 
 ---
 
@@ -135,8 +144,46 @@ flowchart TD
 * **Microcontroller:** Arduino Mega 2560 (ATmega2560)
 * **Network Interface:** [W5500 Ethernet SPI Module](https://github.com/njh/W5500MacRaw) running Raw MAC frame transmission over standard Cat5e umbilical
 * **Display:** 20x4 Character LCD (I2C interface at `0x27`)
-* **Compilation:**
-  ```bash
-  arduino-cli compile --fqbn arduino:avr:mega:cpu=atmega2560 ./gs
-  arduino-cli upload -p <COM_PORT> --fqbn arduino:avr:mega:cpu=atmega2560 ./gs
-  ```
+* **Power Supply:** 24V DC regulated bench power supply
+* **FQBN:** `arduino:avr:mega:cpu=atmega2560`
+
+---
+
+## 6. Build, Flash & Automated Testing Commands
+
+### Identify Connected COM Port
+```powershell
+C:\arduino-cli_1.5.0_Windows_64bit\arduino-cli.exe board list
+# or if arduino-cli is in your PATH:
+arduino-cli board list
+```
+
+### Compile Only (Verification)
+```powershell
+C:\arduino-cli_1.5.0_Windows_64bit\arduino-cli.exe compile --warnings all --fqbn arduino:avr:mega:cpu=atmega2560 ./gs
+```
+
+### Compile & Flash in One Step
+```powershell
+C:\arduino-cli_1.5.0_Windows_64bit\arduino-cli.exe compile -u -p COM5 --warnings none --fqbn arduino:avr:mega:cpu=atmega2560 ./gs
+```
+*(Replace `COM5` with your active serial port reported by `board list`.)*
+
+> [!NOTE]
+> ### Compiler Warnings & Static Fire #2 Telemetry Scope
+> When compiling with verbose compiler flags (`--warnings all`), GCC will report pedantic compiler warnings regarding unused parameters (e.g. `printMACAddress`, `LiquidCrystal_I2C`), signed/unsigned integer comparisons in debounce routines, and pointer type conversions.
+> * **Operational Impact:** These warnings stem from legacy code routines and third-party AVR libraries; they do **not** affect Ground Station valve commanding, safety interlocks, or FSM execution.
+> * **Rocket Telemetry Status:** As of **Static Fire #2**, the Ground Station operates strictly as a one-way commanding console (broadcasting MAC-raw valve command frames to relief and flow valve driver Arduinos) and does not currently receive or ingest downstream rocket telemetry over Ethernet. These compiler warnings do not impact one-way command generation or packet transmission.
+> * To compile cleanly without compiler noise during bench flashing, use `--warnings none`.
+
+### Flash / Upload Precompiled Binary
+```powershell
+C:\arduino-cli_1.5.0_Windows_64bit\arduino-cli.exe upload -p COM5 --fqbn arduino:avr:mega:cpu=atmega2560 ./gs
+```
+
+### Run Native C++ Automated Unit Tests
+```powershell
+.\testing\unit_tests\run_tests.ps1
+# or batch file:
+.\testing\unit_tests\run_tests.bat
+```

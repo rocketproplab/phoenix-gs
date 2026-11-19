@@ -17,6 +17,10 @@
   * Option B (Standalone Bench): PC running Wireshark on Ethernet adapter or Arduino Serial Monitor at 115200 baud to inspect state byte transmission (`pkt[14]`).
 * **Multimeter / Logic Probe:** For probing digital input pins and coil driver outputs if debugging physical switches.
 
+> [!WARNING]
+> **Electrical Command Verification vs. Pneumatic Validation:**
+> These test procedures verify that the Ground Station correctly commands the **electronic state of the valve coils on the rocket's MOSFET driver board**. The Ground Station has no sensor feedback from physical valve poppets or seals. During pad integration and static fire, physical valve actuation must be validated by Fluids and Launch Operations using pneumatic pressure transducers, pad camera frost plume observations, and line pressure rise/decay rates.
+
 ---
 
 ## Summary of Test Categories
@@ -158,11 +162,10 @@ flowchart TD
     Armed["3. ARM MODE\nV:CLD  P:OPN  F:CLD\n(0b01100101)"]
     Launch["4. ROCKET LAUNCHING!\nV:CLD  P:OPN  F:OPN\n(0b01101111)"]
 
-    PreArm -->|"Vent Switch UP"| VentsClosed
+    PreArm -->|"Vent Switch UP (ARM must be DOWN)"| VentsClosed
     VentsClosed -->|"Vent Switch DOWN"| PreArm
     VentsClosed -->|"ARM Switch UP (Vents Verified)"| Armed
-    Armed -->|"Hold: ARM Switch DOWN"| VentsClosed
-    Armed -->|"Safety: Vent Switch DOWN"| PreArm
+    Armed -->|"Hold Count: ARM Switch DOWN"| VentsClosed
     Armed -->|"LAUNCH Pushbutton"| Launch
 ```
 
@@ -185,8 +188,12 @@ flowchart TD
 | 5.2.2 | `VENTS CLOSED` (Vent Switch UP) | Flip **Vent Switch DOWN** | Console immediately reverts to `PRE ARM MODE` (`V:OPN P:CLD F:CLD`). Vents unpower and spring open (`0x00`). | [ ] PASS<br>[ ] FAIL |
 | 5.2.3 | `ARM MODE` (Vent UP, ARM UP) | Flip **ARM Switch DOWN** (Hold count) | Pressure valves instantly close (`0V`). Console returns to `VENTS CLOSED` (`V:CLD P:CLD F:CLD`, `0x05`), holding tank pressure without gas addition. | [ ] PASS<br>[ ] FAIL |
 | 5.2.4 | `VENTS CLOSED` (From 5.2.3 hold) | Flip **Vent Switch DOWN** (Depressurize) | Vents instantly unpower and spring open. Console returns to `PRE ARM MODE` (`V:OPN P:CLD F:CLD`, `0x00`), safely venting the tanks. | [ ] PASS<br>[ ] FAIL |
-| 5.2.5 | `ARM MODE` (Vent UP, ARM UP) | Flip **Vent Switch DOWN** while ARM is UP | **Automatic Cutoff:** Console immediately cuts pressurization and drops to `PRE ARM MODE` (`0x00`). Pressure valves snap shut; vents spring open. | [ ] PASS<br>[ ] FAIL |
-| 5.2.6 | `LAUNCH MODE` (Any stage) | Toggle any of the 6 valve levers UP/DOWN | **Software Lockout:** Valve levers produce zero response on the LCD or Ethernet state byte. | [ ] PASS<br>[ ] FAIL |
+| 5.2.5 | `ARM MODE` (Vent UP, ARM UP) | Flip **Vent Switch DOWN** while ARM is UP | **Vent Switch Ignored:** Console remains firmly in `ARM MODE` (`0b01100101`, `0x65`). Vents stay closed; GN2 pressure valves stay open. LCD continues to show `ARM MODE`. | [ ] PASS<br>[ ] FAIL |
+| 5.2.6 | `ARM MODE` (From 5.2.5 with Vent Switch DOWN) | Flip guarded **ARM Switch DOWN** | **Pneumatic Sequencing Protection:** Console transitions to `VENTS CLOSED` (`0x05`). Pressures snap shut (`0V`). Vents **remain powered closed** to prevent simultaneous depower. Console stays in `VENTS CLOSED`. Direct drop to `PRE-ARM` is blocked! | [ ] PASS<br>[ ] FAIL |
+| 5.2.6a | Console in `VENTS CLOSED` from 5.2.6 | Leave Vent Switch DOWN or toggle levers | Vents remain energized shut (`0x05`). State machine refuses to enter `PRE-ARM` directly from `ARM MODE`. | [ ] PASS<br>[ ] FAIL |
+| 5.2.6b | Console in `VENTS CLOSED` from 5.2.6 | Flick Vent Switch **UP**, then **DOWN** | Console transitions cleanly to `PRE-ARM MODE` (`0x00`). Vents unpower and spring open to atmosphere. Pressures and vents were cleanly separated. | [ ] PASS<br>[ ] FAIL |
+| 5.2.7 | `PRE ARM MODE` (With ARM Switch UP) | Flip **Vent Switch UP** while ARM is UP | **Pre-Arm Lockout:** Console refuses to close vents and stays in `PRE ARM MODE` (`0x00`). Both switches must be returned to DOWN before initiating countdown. | [ ] PASS<br>[ ] FAIL |
+| 5.2.8 | `LAUNCH MODE` (Any stage) | Toggle any of the 6 valve levers UP/DOWN | **Software Lockout:** Valve levers produce zero response on the LCD or Ethernet state byte. | [ ] PASS<br>[ ] FAIL |
 
 ---
 
@@ -236,6 +243,17 @@ flowchart TD
 | **Test 3**<br>*(Multi-Lever Block)* | `MISSION ABORT!` latched. | 1. Flip `LOX-P` and `LNG-F` levers **UP**.<br>2. Unlatch ABORT button.<br>3. Press **`DEV MODE`**. | **TRANSITION BLOCKED!**<br>LCD displays `ABORT EXIT BLOCKED` warning and restores `MISSION ABORT!`. Zero power applied to coils. | [ ] PASS<br>[ ] FAIL |
 | **Test 4**<br>*(Exit into Fueling Mode Block)* | `MISSION ABORT!` latched. | 1. Flip `LOX-V` lever **UP**.<br>2. Unlatch ABORT button.<br>3. Press **`FUELING MODE`**. | **TRANSITION BLOCKED!**<br>LCD displays `ABORT EXIT BLOCKED` warning and restores `MISSION ABORT!`. Zero power applied to coils. | [ ] PASS<br>[ ] FAIL |
 | **Test 5**<br>*(Correction & Recovery)* | Console blocked in `MISSION ABORT!` from Test 4. | 1. Physically flip all levers back to **DOWN / OFF**.<br>2. Press **`DEV MODE`** (or `FUELING MODE`). | Console accepts transition, runs 2s stabilization delay, and enters selected mode safely. | [ ] PASS<br>[ ] FAIL |
+
+### 6.4 Post-Launch Safing & Recovery to DEV Mode (Protocol A Verification)
+* **Objective:** Verify that following an active engine burn (`LAUNCH` mode), mode buttons are locked out until safed via the ABORT button, and cleanly recover to DEV mode.
+
+| Step | Current Operating State | Action | Expected Result | Pass / Fail |
+| :---: | :--- | :--- | :--- | :---: |
+| 6.4.1 | `ROCKET LAUNCHING!` (`0x6F`) | Press **`DEV MODE`** or **`FUELING MODE`**. | **Mode buttons locked out!** Console remains firmly in `LAUNCH` mode. Main flows remain active. | [ ] PASS<br>[ ] FAIL |
+| 6.4.2 | `ROCKET LAUNCHING!` (`0x6F`) | Depress the red **`ABORT`** mushroom button (MECO). | Flow and pressure valves snap shut (`0V`); vents spring wide open. LCD updates to `MISSION ABORT! ALL VENTS OPENED!`. | [ ] PASS<br>[ ] FAIL |
+| 6.4.3 | `MISSION ABORT!` | Lower **ARM Switch**, lower **Vent Switch**, verify all 6 levers are **DOWN**. | Switch baseline established for safe recovery. | [ ] PASS<br>[ ] FAIL |
+| 6.4.4 | `MISSION ABORT!` | Unlatch **ABORT** button (pull/twist UP). | Abort latch cleared. LCD continues to show `MISSION ABORT!`. | [ ] PASS<br>[ ] FAIL |
+| 6.4.5 | Unlatched Abort | Press **`DEV MODE`**. | Console runs 2s stabilization delay (`SWITCHING STATE / WAIT...`), then cleanly enters `DEV MODE` with all valves unpowered. | [ ] PASS<br>[ ] FAIL |
 
 ---
 
