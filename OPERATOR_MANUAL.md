@@ -272,11 +272,16 @@ To conclude an engine test burn and safe the vehicle:
 
 ## 6. Emergency Abort Operations
 
-The red **ABORT** button is the highest-priority control on the console. It can be triggered at any time during `PRE-ARM`, `ARMED`, `LAUNCH`, or terminal countdown.
+The red **ABORT** button is the highest-priority safety control during launch countdown and flight. It is actively scanned throughout all Launch Mode stages (`PRE-ARM`, `VENTS CLOSED`, `ARM MODE`, and `LAUNCH`).
+
+> [!NOTE]
+> **Abort Scope Across Console Modes:**
+> * In **`LAUNCH MODE`**, depressing the ABORT button executes the Launch Abort FSM: transmits `0b10000000` (`0x80`), commands 0V across all valve coils, displays `MISSION ABORT! ALL VENTS OPENED!`, and latches the system safe.
+> * In **`DEV MODE`** and **`FUELING MODE`**, valve coils are commanded directly by physical console toggle levers. Depressing the ABORT button locks out mode transitions (`getModePress` returns `PRE_MODE`), but does not override manual toggle positions. To immediately safe all valves in DEV or FUEL mode, operators physically flick all toggle levers **DOWN / OFF**.
 
 ```mermaid
 flowchart TD
-    Trigger["ANY STATE: ABORT Mushroom Button Depressed"] --> PowerCut["Instant Electrical Action: 0V Power Cut to All Valve Coils"]
+    Trigger["LAUNCH MODE: ABORT Mushroom Button Depressed\n(PRE-ARM, VENTS_CLOSED, ARMED, LAUNCH)"] --> PowerCut["Instant Electrical Action: 0V Power Cut to All Valve Coils\n(Transmits 0x80)"]
     
     PowerCut --> Reaction1["Flow & Pressurization Valves (Fail-Closed): SNAP SHUT"]
     PowerCut --> Reaction2["Tank Vent Valves (Fail-Open): SPRING WIDE OPEN"]

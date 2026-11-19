@@ -201,7 +201,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    AnyState["ANY OPERATING STATE\n(DEV, FUEL, PRE-ARM, VENTS_CLOSED, ARMED, LAUNCH)"] --> AbortPress["Depress Red ABORT Mushroom Button"]
+    AnyState["ANY LAUNCH STAGE\n(PRE-ARM, VENTS_CLOSED, ARMED, LAUNCH)"] --> AbortPress["Depress Red ABORT Mushroom Button"]
     AbortPress --> InstantPowerCut["0V Power Cut to ALL Valves\nTransmits 0b10000000 (0x80)"]
     InstantPowerCut --> VentAction["Pressures & Flows SNAP SHUT\nTank Vents SPRING WIDE OPEN"]
     VentAction --> LockedState["Mechanical Latch Holds MISSION ABORT!\nMode Buttons & Controls Locked Out"]
@@ -213,17 +213,18 @@ flowchart TD
     CheckLevers -- "Yes: All Levers DOWN" --> SafeExit["Clean Transition to DEV or FUELING Mode"]
 ```
 
-### 6.1 Abort Trigger Across All Operating States
-* **Objective:** Verify that depressing the red ABORT button instantly drops coil power to 0V and displays the abort screen regardless of current mode or stage.
+### 6.1 Abort Trigger Across All Launch Mode Stages
+* **Objective:** Verify that depressing the red ABORT button while in Launch Mode instantly drops coil power to 0V and displays the abort screen across all 4 countdown and flight stages (`PRE_ARM`, `VENTS_CLOSED`, `ARMED`, `LAUNCH`).
 
-| Test # | Active State Prior to Abort | Action | Expected Response | Pass / Fail |
+> [!NOTE]
+> In `DEV MODE` and `FUELING MODE`, valve coils are directly commanded by their physical console toggle levers. Depressing the ABORT button in DEV or FUEL mode engages the E-Stop lockout (preventing mode transitions), but does not execute the Launch Abort FSM. To de-energize valves in DEV/FUEL mode, operators physically flick the toggle levers DOWN / OFF.
+
+| Test # | Active Launch Stage Prior to Abort | Action | Expected Response | Pass / Fail |
 | :---: | :--- | :--- | :--- | :---: |
-| 6.1.1 | `DEV MODE` (Valves energized) | Depress **ABORT** button | Mode instantly aborts; all coils drop to 0V. State byte transmits `0x80`. | [ ] PASS<br>[ ] FAIL |
-| 6.1.2 | `FUELING MODE` (Vents energized) | Depress **ABORT** button | Vent coils drop to 0V, vents spring open. State byte transmits `0x80`. | [ ] PASS<br>[ ] FAIL |
-| 6.1.3 | `PRE ARM MODE` | Depress **ABORT** button | LCD displays `MISSION ABORT! / ALL VENTS OPENED!`. All outputs 0V. | [ ] PASS<br>[ ] FAIL |
-| 6.1.4 | `VENTS CLOSED` | Depress **ABORT** button | Vent coils de-energize immediately; vents spring wide open. LCD updates to `MISSION ABORT!`. | [ ] PASS<br>[ ] FAIL |
-| 6.1.5 | `ARM MODE` | Depress **ABORT** button | Pressure valves snap shut; vents spring wide open. LCD updates to `MISSION ABORT!`. | [ ] PASS<br>[ ] FAIL |
-| 6.1.6 | `ROCKET LAUNCHING!` | Depress **ABORT** button | Main flows snap shut; pressure valves snap shut; vents spring open. LCD updates to `MISSION ABORT!`. | [ ] PASS<br>[ ] FAIL |
+| 6.1.1 | `PRE ARM MODE` (`0x00`) | Depress **ABORT** button | LCD displays `MISSION ABORT! / ALL VENTS OPENED!`. All outputs 0V. State byte transmits `0x80`. | [ ] PASS<br>[ ] FAIL |
+| 6.1.2 | `VENTS CLOSED` (`0x05`) | Depress **ABORT** button | Vent coils de-energize immediately; vents spring wide open. LCD updates to `MISSION ABORT!`. Transmits `0x80`. | [ ] PASS<br>[ ] FAIL |
+| 6.1.3 | `ARM MODE` (`0x65`) | Depress **ABORT** button | Pressure valves snap shut; vents spring wide open. LCD updates to `MISSION ABORT!`. Transmits `0x80`. | [ ] PASS<br>[ ] FAIL |
+| 6.1.4 | `ROCKET LAUNCHING!` (`0x6F`) | Depress **ABORT** button | Main flows snap shut; pressure valves snap shut; vents spring open. LCD updates to `MISSION ABORT!`. Transmits `0x80`. | [ ] PASS<br>[ ] FAIL |
 
 ### 6.2 Mechanical E-Stop Latch Lockout
 | Step | Action | Expected Result | Pass / Fail |

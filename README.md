@@ -123,8 +123,8 @@ flowchart TD
    * The console refuses all mode transitions while the mechanical mushroom ABORT button remains mechanically latched down. Operators must physically unlatch the button before selecting a recovery mode.
 4. **Decoupled 2-Stage Arming & Pressurant Conservation:**
    * Rather than relying on a blind timer, the operator first flips the Vent Switch to seal vents (`VENTS CLOSED`), visually confirms closure via pad cameras/frost plume cutoff, and only then flips the guarded ARM switch to open GN2 pressurization valves (`ARM MODE`). Pressurization is locked out if the Vent Switch is DOWN.
-5. **Abort Precedence & Zero Pad Power:**
-   * Depressing the red ABORT button immediately cuts coil power to **0V** across all rocket valves: vent valves spring open, while main propellant and pressure valves snap closed.
+5. **Launch Abort Precedence & Zero Pad Power:**
+   * During any stage of Launch Mode (`PRE_ARM`, `VENTS_CLOSED`, `ARMED`, `LAUNCH`), depressing the red ABORT button immediately cuts coil power to **0V** across all rocket valves (broadcasting `0b10000000` / `0x80`): vent valves spring open, while main propellant and pressure valves snap closed.
 6. **Abort Exit Interlock:**
    * Exiting `MISSION ABORT` into `DEV MODE` or `FUELING MODE` is **hard-blocked** if any valve toggle lever is left UP / ON.
    * Displays `"ABORT EXIT BLOCKED / FLICK ALL LEVERS / TO OFF / DOWN"` and keeps all valve outputs at 0V until levers are confirmed DOWN.
