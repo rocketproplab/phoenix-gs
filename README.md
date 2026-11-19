@@ -75,12 +75,12 @@ flowchart TD
         VNT["VENTS CLOSED (0b00000101)\nVent Pre-Actuation & Visual Check"]
         ARM["ARM MODE (0b01100101)\nV:CLD  P:OPN  F:CLD"]
         IGN["ROCKET LAUNCHING! (0b01101111)\nV:CLD  P:OPN  F:OPN"]
-        ABT["MISSION ABORT! (0b10000000)\n0V to all coils | Vents Spring OPN"]
+        ABT["MISSION ABORT! (0b10000000)\n0V to all coils - Vents Spring OPN"]
 
         PRE -->|Vent Switch UP| VNT
         VNT -->|Vent Switch DOWN| PRE
-        VNT -->|ARM Switch UP (Vents Verified)| ARM
-        ARM -->|Hold Count: ARM Switch DOWN| VNT
+        VNT -->|ARM Switch UP - Vents Verified| ARM
+        ARM -->|Hold Count - ARM Switch DOWN| VNT
         ARM -->|LAUNCH Button Pressed| IGN
 
         PRE -.->|ABORT Button| ABT
@@ -90,7 +90,7 @@ flowchart TD
     end
 
     LAUNCH --- PRE
-    ABT -->|Unlatch ABORT + Press DEV| DEV
+    ABT -->|Unlatch ABORT and Press DEV| DEV
 ```
 
 ### Mode 1: Developer Mode (`DEV MODE`) — High Risk
