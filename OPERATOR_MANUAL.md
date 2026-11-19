@@ -27,15 +27,11 @@ The Ground Station is a standalone, hardwired control console. It communicates d
 
 To operate the console safely, operators must understand the physical distinction between **Fail-Closed** and **Fail-Open** valves:
 
-```
-+---------------+---------------------+--------------------+--------------------+
-| Valve Name    | Physical Type       | Lever DOWN / OFF   | Lever UP / ON      |
-+---------------+---------------------+--------------------+--------------------+
-| LNG-P, LOX-P  | Fail-Closed (NC)    | CLOSED (Unpowered) | OPEN (Powered)     |
-| LNG-F, LOX-F  | Fail-Closed (NC)    | CLOSED (Unpowered) | OPEN (Powered)     |
-| LNG-V, LOX-V  | Fail-Open   (NO)    | OPEN   (Unpowered) | CLOSED (Powered)   |
-+---------------+---------------------+--------------------+--------------------+
-```
+| Valve Name | Physical Type | Lever DOWN / OFF | Lever UP / ON |
+| :--- | :--- | :--- | :--- |
+| `LNG-P`, `LOX-P` | Fail-Closed (NC) | CLOSED (Unpowered) | OPEN (Powered) |
+| `LNG-F`, `LOX-F` | Fail-Closed (NC) | CLOSED (Unpowered) | OPEN (Powered) |
+| `LNG-V`, `LOX-V` | Fail-Open (NO) | **OPEN** (Unpowered) | **CLOSED** (Powered) |
 
 ### The Fail-Open Vent Philosophy
 1. **Cryogenic Boil-Off Protection:** Liquid Methane (LNG) and Liquid Oxygen (LOX) boil off continuously on the pad. Because the tank vent valves (`LNG-V` and `LOX-V`) are **Fail-Open**, leaving their console levers in the default **DOWN / OFF** position cuts electrical power, causing the vent valves to spring physically open. Boil-off gas vents naturally to atmosphere without building pressure in the tanks.
@@ -197,22 +193,17 @@ If the countdown is held while in `ARM MODE`:
 
 The red **ABORT** button is the highest-priority control on the console. It can be triggered at any time during `PRE-ARM`, `ARMED`, `LAUNCH`, or terminal countdown.
 
-```
-                  ANY STATE + [ ABORT BUTTON PRESSED ]
-                                   │
-                                   ▼
-                        [ 0V POWER CUT TO ALL VALVES ]
-                                   │
-                                   ▼
-                      ┌────────────────────────────┐
-                      │ Flows & Pressures: SNAP SHUT│
-                      │ Vents: SPRING WIDE OPEN    │
-                      └────────────────────────────┘
-                                   │
-                                   ▼
-                        [ MISSION ABORT DISPLAY ]
-                                   │
-                     (Mechanical Latch Holds State)
+```mermaid
+flowchart TD
+    Trigger["ANY STATE: ABORT Mushroom Button Depressed"] --> PowerCut["Instant Electrical Action: 0V Power Cut to All Valve Coils"]
+    
+    PowerCut --> Reaction1["Flow & Pressurization Valves (Fail-Closed): SNAP SHUT"]
+    PowerCut --> Reaction2["Tank Vent Valves (Fail-Open): SPRING WIDE OPEN"]
+    
+    Reaction1 --> Screen["LCD Readout: MISSION ABORT! ALL VENTS OPENED!"]
+    Reaction2 --> Screen
+    
+    Screen --> LatchState["Mechanical Latch Holds State: All Controls Locked Out Until Physically Unlatched"]
 ```
 
 ### What Happens When Abort is Depressed:

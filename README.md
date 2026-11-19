@@ -1,103 +1,137 @@
-# phoenix-gs
-Phoenix ground station with Arduino \
-Works with the launch box to send valve control signals with protected logic
+# Phoenix Ground Station (`phoenix-gs`)
 
-## Latest fix after static fire on Febrary 15, 2026
-* A switch latch bug was discovered during the static fire
-* Trigger condition: Launch Mode -> ARM Switch ON-> Launch Button -> DEV Mode -> ARM Swtich OFF -> Launch Button
-* When performing a launch (usually cold flow before static fire), and close the ARM switch outside of the launch mode, there will be a very brief moment that the ground station will sent ARM ON state to the flight computer when entering the launch mode again. This is due to the debounce switch reading mechanism.
-* This branch has been archieved in ``static-fire-Feb2026-record``
-* The current main branch has patched this fix to enforce a 2 second sensor read stabalization time when swtiching state, as well as a state check when entering the launch mode. Any invalid state will prevent entering the launch mode and revert back to the previous state.
+Standalone ground control console firmware powered by an Arduino Mega 2560 and a W5500 Ethernet module. Communicates over umbilical Ethernet to command rocket valve boards and read telemetry with hardware and software safety interlocks.
 
-## Ground station finite state machine
-* One of the following mode will be ran during each void loop() call
-* Dev Mode: all valves can be individually controlled
-* Fuel Mode: only the vent valves (LGN-V, LOX-V, GN2-V) can be opened; all flow and pressure valves are forced to close (LNG-F, LOX-f, LNG-P, LOX-P all closed)
-* Launch Mode: ARM and then launch; Emergency Stop can be triggered anytime to open all vent valevs to release pressure
+> [!TIP]
+> For Launch Conductors, Chief Engineers, and Fluids Leads, refer to the full **[Operator & Flight Controller Manual](OPERATOR_MANUAL.md)** for operational rules, bench-check procedures, and console interlocks.
 
-## Binary encoding of the buttons/switches
+---
 
-### Launch sequence encoding
-PRE_ARM = 0b0000000; // Safe: all valves closed \
-ABORT &nbsp;&nbsp;&nbsp;&nbsp;= 0b0010101;   // Abort: open all vent valves \
-ARMED &nbsp;&nbsp;&nbsp;= 0b1100000;   // Armed: ready to launch, waiting trigger \
-LAUNCH &nbsp;= 0b1101010;  // Launch: ignition/flight started 
+## 1. System Overview & Valve Philosophy
 
-### Individual valve masks
-lng_pressure_mask = 0b1000000; \
-lox_pressure_mask = 0b0100000; \
-gn2_vent_mask = 0b0010000; \
-lng_flow_mask = 0b0001000; \
-lng_vent_mask = 0b0000100; \
-lox_flow_mask = 0b0000010; \
-lox_vent_mask = 0b0000001;
+The ground station manages 6 active propellant and pressurization valves. Tank vent valves (`LNG-V` and `LOX-V`) are **Fail-Open (Normally Open)**, while pressurization and flow valves are **Fail-Closed (Normally Closed)**.
 
-null_mask = 0b0000000;
+| Valve Identifier | Function | Valve Type | Console Lever DOWN / OFF | Console Lever UP / ON |
+| :--- | :--- | :--- | :--- | :--- |
+| `LNG-P` | LNG Tank Pressurization (GN2) | Fail-Closed (NC) | CLOSED (0V unpowered) | OPEN (Powered) |
+| `LOX-P` | LOX Tank Pressurization (GN2) | Fail-Closed (NC) | CLOSED (0V unpowered) | OPEN (Powered) |
+| `LNG-F` | LNG Main Engine Flow | Fail-Closed (NC) | CLOSED (0V unpowered) | OPEN (Powered) |
+| `LOX-F` | LOX Main Engine Flow | Fail-Closed (NC) | CLOSED (0V unpowered) | OPEN (Powered) |
+| `LNG-V` | LNG Cryogenic Tank Vent | **Fail-Open (NO)** | **OPEN** (0V unpowered) | **CLOSED** (Powered) |
+| `LOX-V` | LOX Cryogenic Tank Vent | **Fail-Open (NO)** | **OPEN** (0V unpowered) | **CLOSED** (Powered) |
 
+> [!NOTE]
+> * `GN2-V` has been removed from the plumbing architecture; GN2 is split between `LNG-P` and `LOX-P`.
+> * The console faceplate contains a 7th toggle lever that is unlabeled and unwired; operators must ignore it.
+> * **Cryogenic Boil-Off & Pad Power:** Because tank vents are Fail-Open, keeping their levers DOWN (unpowered) leaves vents naturally open to vent boil-off without drawing battery power or heating solenoid coils.
+> * **Loss of Signal (Fail-Safe):** In any power loss or cable disconnect, all coils drop to 0V: flows snap shut and vents spring wide open.
 
-## Launch Mode (Risk: Low)
-Launch sequence has four stages
+---
 
-### PRE-ARM (0000000)
-* default state, nothing happens
-* all valves closed
+## 2. Valve Masks & State Encoding
 
-### ARMED (1100000)
-* lng_pressure open
-* lox_pressure open
+Valve commands are packed into an 8-bit state byte transmitted over Ethernet raw MAC frames (`gs/constants.h`):
 
-### ABORT (0010101)
-* open vent valves for all 
-* emergency break, abort the mission
-* gn2_vent open
-* lng_vent open
-* lox_vent open
+### 8-Bit Valve Coil Masks
+```cpp
+const uint8_t LNG_PRES_MASK = 0b01000000; // Bit 6: Fail-Closed
+const uint8_t LOX_PRES_MASK = 0b00100000; // Bit 5: Fail-Closed
+const uint8_t LNG_FLOW_MASK = 0b00001000; // Bit 3: Fail-Closed
+const uint8_t LNG_VENT_MASK = 0b00000100; // Bit 2: Fail-Open
+const uint8_t LOX_FLOW_MASK = 0b00000010; // Bit 1: Fail-Closed
+const uint8_t LOX_VENT_MASK = 0b00000001; // Bit 0: Fail-Open
+const uint8_t NULL_MASK     = 0b00000000;
 
-### LAUNCH:(1101010)
-* after arm flow valve is opend
-* open the flow valevs for both fuels
-* lng_pressure open
-* lox_pressure open
-* lng_flow open
-* lox_flow open
-* rocket launching, no way back
+// Fail-Open Mask (vent coil power required to seal)
+const uint8_t FAIL_OPEN_MASK = LNG_VENT_MASK | LOX_VENT_MASK; // 0b00000101
+```
 
+### Launch Sequence Encoding
+```cpp
+const uint8_t PRE_ARM      = NULL_MASK;                                      // 0b00000000 (Vents unpowered OPN, flows/pressures unpowered CLD)
+const uint8_t VENTS_CLOSED = FAIL_OPEN_MASK;                                 // 0b00000101 (Vent coils energized shut; 500 ms staged arming delay)
+const uint8_t ARMED        = VENTS_CLOSED | (LNG_PRES_MASK | LOX_PRES_MASK); // 0b01100101 (Vents powered shut, pressures powered open)
+const uint8_t LAUNCH       = ARMED | LNG_FLOW_MASK | LOX_FLOW_MASK;          // 0b01101111 (Vents shut, pressures open, main flows open)
+const uint8_t ABORT        = 0b10000000;                                     // Bit 7 non-valve mask (0V to all valve coils; vents spring open)
+```
 
-### Buttons/Swithces
-* Abort (button): has highest priority, open vent valves for all
-* Arm (switch): open/close arm flow valve
-* Launch (button): open fuel 1&2 flow valves
-* **NOTE**: The diagram is not up to date (only 6 digits) because we added a new switch. But the flow logic is correct.
+---
 
-![My Image](./lib/diagrams/pheonix-fc-launch-control-launch.svg)
+## 3. Finite State Machine (FSM) & Operating Modes
 
+```mermaid
+flowchart TD
+    subgraph MODES["Console Operating Modes"]
+        DEV["DEV MODE\n(Full Manual Valve Control)"]
+        FUEL["FUELING MODE\n(Vents Manual, Flows/Press Locked CLD)"]
+        LAUNCH["LAUNCH MODE\n(Automated Terminal Countdown FSM)"]
+    end
 
-## Launch Control - Fueling Mode (Risk: Medium)
-* In fueling mode, all flow valves are locked in OFF mode
-* all vent valves can be controlled by individual switch
-* **NOTE**: GN2 Flow is now split into: LNG Pressure and LOX Pressure
+    DEV <--> FUEL
+    DEV -->|All Levers DOWN Check| LAUNCH
+    FUEL -->|All Levers DOWN Check| LAUNCH
 
+    subgraph LAUNCH_FSM["Launch Mode State Machine"]
+        PRE["PRE-ARM (0b00000000)\nV:OPN  P:CLD  F:CLD"]
+        SEAL["SEALING VENTS (0b00000101)\n500 ms Staged Seating Delay"]
+        ARM["ARM MODE (0b01100101)\nV:CLD  P:OPN  F:CLD"]
+        IGN["ROCKET LAUNCHING! (0b01101111)\nV:CLD  P:OPN  F:OPN"]
+        ABT["MISSION ABORT! (0b10000000)\n0V to all coils | Vents Spring OPN"]
 
-![My Image](./lib/diagrams/pheonix-fc-launch-control-fueling.svg)
+        PRE -->|ARM Switch UP| SEAL
+        SEAL -->|After 500 ms| ARM
+        ARM -->|Hold Count: ARM Switch DOWN| PRE
+        ARM -->|LAUNCH Button Pressed| IGN
 
+        PRE -.->|ABORT Button| ABT
+        SEAL -.->|ABORT Button| ABT
+        ARM -.->|ABORT Button| ABT
+        IGN -.->|ABORT Button| ABT
+    end
 
-## Launch Control - Dev Mode (Risk: High)
-* This mode is intended for testing valve openings before fueling
-* All valves are free to be switched on and off
-* Be very sure of what you are doing when using this mode
-* **NOTE**: GN2 Flow is now split into: LNG Pressure and LOX Pressure
+    LAUNCH --- PRE
+    ABT -->|Unlatch ABORT + Press DEV| DEV
+```
 
-![My Image](./lib/diagrams/pheonix-fc-launch-control-dev.svg)
+### Mode 1: Developer Mode (`DEV MODE`) — High Risk
+* Intended for pre-test dry valve cycling, cold flows, and line leak checks.
+* Every console toggle lever directly controls electrical power to its corresponding valve coil.
+* **Caution:** Toggling levers directly energizes or de-energizes valves on the pad.
 
+### Mode 2: Fueling Mode (`FUELING MODE`) — Medium Risk
+* Used during propellant loading, line chilling, and tank farm operations.
+* Flow valves (`LNG-F`, `LOX-F`) and pressurization valves (`LNG-P`, `LOX-P`) are **locked closed** by software.
+* Tank vent valves (`LNG-V`, `LOX-V`) remain under manual toggle control to vent boil-off or seal tanks for chilling.
 
+### Mode 3: Launch Mode (`LAUNCH MODE`) — Low Manual Risk (Automated Safety)
+* All 6 individual toggle levers are completely ignored by software.
+* Terminal countdown is controlled strictly via the **ARM** switch, **LAUNCH** pushbutton, and **ABORT** button.
 
-## Draw.io Link
-* https://drive.google.com/file/d/1tbEu6RL3mTaqcmE_wz8DDxYVTB-fJ5dZ/view?usp=sharing
+---
 
-# Launch Terminal Physical Specifications
-## Ethernet
-* [W5500 Ethernet LAN Network Module](https://www.amazon.com/HiLetgo-Ethernet-Network-Support-Microcontroller/dp/B0CDWX9VQ5)
+## 4. Key Safety Interlocks
 
+1. **Launch Entry Interlock:**
+   * Prevents entering Launch Mode if any console toggle lever is left UP / ON, if the ARM switch is UP, or if the ABORT button is latched.
+   * On invalid entry, displays `"FLICK ALL LEVERS TO OFF / DOWN"` and safely returns to the previous mode (or `DEV MODE` if from startup).
+2. **In-Flight Mode Lockout:**
+   * Once in `VENTS_CLOSED`, `ARMED`, or `LAUNCH`, the `DEV` and `FUEL` mode buttons are **completely ignored**. An operator cannot accidentally switch modes or dump pressure while armed. The operator must disarm (flip ARM switch down) or depress ABORT.
+3. **E-Stop Mode Transition Lockout:**
+   * The console refuses all mode transitions while the mechanical mushroom ABORT button remains mechanically latched down. Operators must physically unlatch the button before selecting a recovery mode.
+4. **Staged Arming (Pressurant Conservation):**
+   * Flipping the ARM switch powers the vent valves closed for 500 ms (`SEALING VENTS`) before opening the GN2 pressurization valves (`LNG-P`, `LOX-P`). This prevents venting high-pressure GN2 pressurant out the open vent line while poppets seat.
+5. **Abort Precedence & Zero Pad Power:**
+   * Depressing the red ABORT button immediately cuts coil power to **0V** across all rocket valves: vent valves spring open, while main propellant and pressure valves snap closed.
 
-# Resource
-* https://github.com/njh/W5500MacRaw
+---
+
+## 5. Hardware Specifications & Setup
+
+* **Microcontroller:** Arduino Mega 2560 (ATmega2560)
+* **Network Interface:** [W5500 Ethernet SPI Module](https://github.com/njh/W5500MacRaw) running Raw MAC frame transmission over standard Cat5e umbilical
+* **Display:** 20x4 Character LCD (I2C interface at `0x27`)
+* **Compilation:**
+  ```bash
+  arduino-cli compile --fqbn arduino:avr:mega:cpu=atmega2560 ./gs
+  arduino-cli upload -p <COM_PORT> --fqbn arduino:avr:mega:cpu=atmega2560 ./gs
+  ```
