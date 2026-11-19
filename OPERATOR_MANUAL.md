@@ -6,13 +6,21 @@
 
 ---
 
-## 🚨 TL;DR: Critical Operator "DO NOT" Rules
+## 🚨 TL;DR: Critical Operator Safety Rules
 
 Before touching any switch on the Phoenix Ground Control Box, all operators must memorize these core flight-line safety rules:
 
+> [!CAUTION]
+> ### ⚠️ Commanded Electronic State vs. Pneumatic Validation
+> **The Ground Station LCD only represents the electronic commanded state of the valve coils on the rocket's MOSFET driver board.**
+> * An LCD reading of `CLD` or `OPN` guarantees only that electrical power (24V or 0V) is commanded to the solenoid coil based on the avionics system.
+> * **The Ground Station CANNOT validate pneumatic or mechanical valve states:** The console has no sensor feedback from physical valve poppets, limit switches, or pneumatic seat seals.
+> * **Actual valve positions can ONLY be validated by pneumatics and visual confirmation:** Due to cryogenic cold-soaking, ice condensation, or seal stiction, valves may lag, bind, or fail to actuate. Launch Conductors and Fluids leads must verify physical seating/opening via tank pressure transducer rise/decay rates, pad camera frost plume cutoffs, and line gauges.
+> * **Console switches represent the commanded electrical state:** Moving a switch commands electrical power to the coil; it does not guarantee mechanical poppet motion.
+
 > [!WARNING]
 > ### Golden Rules for Console Operators
-> 1. **DO NOT assume Lever DOWN means Closed:** Cryogenic tank vents (`LNG-V` and `LOX-V`) are **Fail-Open (Normally Open)**. Setting a vent lever **DOWN / OFF cuts electrical power and leaves the valve physically OPEN (`OPN`)**. Setting it **UP / ON applies power to force the valve CLOSED (`CLD`)**. Always verify true physical valve state on the LCD screen!
+> 1. **DO NOT assume Lever DOWN means Closed (And NEVER assume the LCD guarantees physical seating):** Console switches strictly command electrical power (`UP = POWERED`, `DOWN = UNPOWERED`). Because cryogenic tank vents (`LNG-V` and `LOX-V`) are **Fail-Open (Normally Open)**, setting a vent lever **DOWN / OFF cuts electrical power to command the valve OPEN (`OPN`)**; setting it **UP / ON applies 24V power to command the valve CLOSED (`CLD`)**. The LCD displays the commanded electronic state on the MOSFET board—**actual physical valve seating must always be verified via pneumatic telemetry and pad camera frost plumes!**
 > 2. **DO NOT arm pressurization before verifying vent closure:** In cryogenic conditions, vents may experience pneumatic sluggishness or seal icing. Flip the **Vent Switch UP first**, visually verify that both vent plumes have ceased (or pad camera confirms seated), and **only then flip the covered ARM switch UP**.
 > 3. **DO NOT enter `DEV MODE` with levers flipped UP:** `DEV MODE` provides 100% direct, uninhibited manual control over valve coils. Any toggle lever left in the UP position will instantly energize that valve coil on the rocket pad.
 > 4. **DO NOT leave vent valves powered shut during pad standby:** Powering vents closed (`UP / ON`) continuously draws battery power, risks solenoid thermal degradation, and traps cryogenic boil-off gas. Keep vent levers **DOWN / OFF** during standby to vent boil-off naturally.
@@ -58,7 +66,7 @@ To operate the console safely, operators must understand the physical distinctio
 
 ## 3. LCD Screen Interface
 
-In **DEV** and **FUELING** modes, the LCD displays a two-column, 4-row status table showing the physical state of every valve:
+In **DEV** and **FUELING** modes, the LCD displays a two-column, 4-row status table showing the commanded state of every valve:
 
 ```text
 +--------------------+
@@ -69,9 +77,9 @@ In **DEV** and **FUELING** modes, the LCD displays a two-column, 4-row status ta
 +--------------------+
 ```
 
-* **`OPN` (Open):** The valve is physically open and flowing fluid/gas.
-* **`CLD` (Closed):** The valve is physically seated and holding pressure.
-* The screen reports the **true physical state of the valve**, accounting for whether it is fail-closed or fail-open. An unpowered vent correctly displays `OPN`, while an unpowered flow valve displays `CLD`.
+* **`OPN` (Commanded Open):** Coil power configured so the valve is commanded open (`0V` for fail-open vents, `24V` for fail-closed flows/pressures).
+* **`CLD` (Commanded Closed):** Coil power configured so the valve is commanded closed (`24V` for fail-open vents, `0V` for fail-closed flows/pressures).
+* The screen reports the **commanded valve state**, taking into account whether each valve is configured as fail-closed or fail-open in software. An unpowered vent correctly displays `OPN`, while an unpowered flow valve displays `CLD`.
 
 > [!WARNING]
 > ### Console Levers Correlate to Electrical Power, NOT Mechanical Valve Position
