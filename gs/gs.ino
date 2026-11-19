@@ -221,8 +221,20 @@ MODE getModePress(MODE PRE_MODE)
   debounceButtonRead(&launch_M);
   debounceButtonRead(&fueling_M);
   debounceButtonRead(&dev_M);
+  debounceAbortRead(&abort_mission);
+  if (abort_mission.currState)
+  {
+    return PRE_MODE; // Must pull/twist ABORT button UP first!
+  }
 
   unsigned int launch_button = launch_M.currState;
+
+  // SAFETY INTERLOCK: Forbid switching out of Launch Mode while rocket is pressurized/armed!
+  // Operator must disarm (flip ARM switch DOWN) or hit ABORT first.
+  if (PRE_MODE == LAUNCH_MODE && (rocketState == ARMED || rocketState == LAUNCH || rocketState == VENTS_CLOSED))
+  {
+    return PRE_MODE; // Ignore DEV and FUEL buttons!
+  }
 
   // Special logic to prevent invalid entry to launch mode
   if (!launch_button)
@@ -246,7 +258,7 @@ MODE getModePress(MODE PRE_MODE)
   {
     if (PRE_MODE != LAUNCH_MODE)
     {
-      rocketState = PRE_ARM;
+      // rocketState = PRE_ARM;
       LCD_LaunchMode();
     }
     return LAUNCH_MODE;
@@ -294,10 +306,10 @@ void LCD_DevAndFueling(int mode)
   /* ---------- 2. Prepare names (index 0 is the Dev-Mode header) ---------- */
   char **itemNames;
 
-  const char *itemNames_Dev[8] = {
+  const char *itemNames_Dev[7] = {
       "DEV MODE", "LNG_P", "LOX-P", "LNG-V", "LNG-F", "LOX-V", "LOX-F"};
 
-  const char *itemNames_Fueling[8] = {
+  const char *itemNames_Fueling[7] = {
       "FUEL MODE", "LNG_P", "LOX-P", "LNG-V", "LNG-F", "LOX-V", "LOX-F"};
 
   // Decide on the mode to operate on
@@ -312,7 +324,7 @@ void LCD_DevAndFueling(int mode)
 
   /* ---------- 3. Draw the table: two cells (10 cols) per row ---------- */
   lcd.clear(); // wipe previous frame
-  for (uint8_t i = 0; i < 8; ++i)
+  for (uint8_t i = 0; i < 7; ++i)
   {
     uint8_t row = i / 2;        // rows 0-3
     uint8_t col = (i % 2) * 10; // 0 or 10
@@ -331,7 +343,7 @@ void LCD_DevAndFueling(int mode)
     uint8_t valve_mask = valve_list[i-1]->mask;
     bool isEnergized = (valve_mask & rocketState) != 0;
     bool isPhysicallyOpen = valve_list[i-1]->isFailOpen ? !isEnergized : isEnergized;
-    lcd.print(isPhysicallyOpen ? "ON " : "OFF");
+    lcd.print(isPhysicallyOpen ? "OPN" : "CLD");
   }
 }
 
@@ -353,23 +365,33 @@ void LCD_LaunchMode()
   {
     lcd.setCursor(0, 1);
     lcd.print("    PRE ARM MODE   ");
-  }
-  else if (ABORT == rocketState)
-  {
-    lcd.setCursor(0, 1);
-    lcd.print("   MISSION ABORT!  ");
+    lcd.setCursor(0, 2);
+    lcd.print("V:OPN  P:CLD  F:CLD");
   }
   else if (ARMED == rocketState)
   {
     lcd.setCursor(0, 1);
     lcd.print("      ARM MODE     ");
+    lcd.setCursor(0, 2);
+    lcd.print("V:CLD  P:OPN  F:CLD");
   }
   else if (LAUNCH == rocketState)
   {
     lcd.setCursor(0, 1);
     lcd.print("  ROCKET LAUNCHING! ");
+    lcd.setCursor(0, 2);
+    lcd.print("V:CLD  P:OPN  F:OPN");
     lcd.setCursor(0, 3);
     lcd.print("Ad Astra Per Aspera!");
+  }
+  else if (ABORT == rocketState)
+  {
+    lcd.setCursor(0, 1);
+    lcd.print("   MISSION ABORT!  ");
+    lcd.setCursor(0, 2);
+    lcd.print("V:OPN  P:CLD  F:CLD");
+    lcd.setCursor(0, 3);
+    lcd.print(" ALL VENTS OPENED! ");
   }
 }
 
@@ -428,12 +450,14 @@ void launch_mode_fail_message(uint8_t event_id)
 
   switch (event_id){
     case (0):
-      lcd.clear(); // wipe previous frame
+      lcd.clear();
       lcd.setCursor(0, 0);
-      lcd.print(" LAUNCH MODE FAILED");
+      lcd.print(" LAUNCH MODE FAILED ");
       lcd.setCursor(0, 1);
-      lcd.print(" CLOSE ALL VALVES  ");
-      delay(1500);
+      lcd.print("  FLICK ALL LEVERS  ");
+      lcd.setCursor(0, 2);
+      lcd.print("    TO OFF / DOWN   ");
+      delay(2000);
       break;
 
     case (1):
@@ -476,9 +500,10 @@ bool launch_mode_check()
   {
     debounceSwitchRead(item);
 
+    // Require all panel levers to be DOWN / OFF to enter Launch Mode
     if (item->currState)
     {
-      valve_open_count++;
+    valve_open_count++;
     }
   }
 
@@ -541,9 +566,37 @@ void launch_mode_logic()
   {
   case PRE_ARM:
     if (abort_button)
+    {
       rocketState = ABORT;
+    }
     else if (arm_switch)
-      rocketState = ARMED;
+    {
+      // Step 1: Power vents closed first
+      rocketState = VENTS_CLOSED;
+      lcd.setCursor(0, 1);
+      lcd.print("   SEALING VENTS   ");
+      lcd.setCursor(0, 2);
+      lcd.print("V:CLD  P:CLD  F:CLD");
+      sendRocketState(rocketState); // Transmit immediately
+
+      // Step 2: 500ms physical seating delay (with abort check)
+      unsigned long seat_timer = millis();
+      while (millis() - seat_timer < 500)
+      {
+        debounceAbortRead(&abort_mission);
+        if (abort_mission.currState)
+        {
+          rocketState = ABORT;
+          break;
+        }
+      }
+
+      // Step 3: Open pressure valves if not aborted
+      if (rocketState != ABORT)
+      {
+        rocketState = ARMED;
+      }
+    }
     break;
 
   case ARMED:
@@ -909,8 +962,8 @@ void loop()
           if (operationMode == DEV_MODE)
           {
             LCD_DevAndFueling(0);
-            break;
           }
+          break;
         }
 
         LCD_LaunchMode();

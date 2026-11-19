@@ -8,21 +8,22 @@
 // ─────────────────────────────────────────────────────────────────────────────
 /** An 8 bits packet that holds the current valve & control state */
 // Individual valve masks
-const uint8_t LNG_PRES_MASK = 0b1000000; // Fail-Closed
-const uint8_t LOX_PRES_MASK = 0b0100000; // Fail-Closed
-const uint8_t LNG_FLOW_MASK = 0b0001000; // Fail-Closed
-const uint8_t LNG_VENT_MASK = 0b0000100; // Fail-Open
-const uint8_t LOX_FLOW_MASK = 0b0000010; // Fail-Closed
-const uint8_t LOX_VENT_MASK = 0b0000001; // Fail-Open
-const uint8_t NULL_MASK     = 0b0000000;
+const uint8_t LNG_PRES_MASK = 0b01000000; // Fail-Closed
+const uint8_t LOX_PRES_MASK = 0b00100000; // Fail-Closed
+const uint8_t LNG_FLOW_MASK = 0b00001000; // Fail-Closed
+const uint8_t LNG_VENT_MASK = 0b00000100; // Fail-Open
+const uint8_t LOX_FLOW_MASK = 0b00000010; // Fail-Closed
+const uint8_t LOX_VENT_MASK = 0b00000001; // Fail-Open
+const uint8_t NULL_MASK     = 0b00000000;
 // Fail-Open Mask: easily flip valves between fail-closed and fail-open here
 const uint8_t FAIL_OPEN_MASK = LNG_VENT_MASK | LOX_VENT_MASK; // Should be 0b0000101
 
 // Launch sequence coil power encoding (Logical State ^ FAIL_OPEN_MASK)
-const uint8_t PRE_ARM = FAIL_OPEN_MASK; // Safe: LNG-V & LOX-V energized closed (Fail Open mask), others unpowered closed, 0b0000101
-const uint8_t ARMED   = PRE_ARM | (LNG_PRES_MASK | LOX_PRES_MASK); // Armed: Pressures powered open, LNG-V & LOX-V powered closed, 0b1100101
-const uint8_t LAUNCH  = ARMED | LNG_FLOW_MASK | LOX_FLOW_MASK; // Launch: Pressures & Flows powered open, LNG-V & LOX-V powered closed
-const uint8_t ABORT   = NULL_MASK; // Abort: WAS GN2-V powered open, LNG-V & LOX-V unpowered (spring open). Now we don't have GN2 so it's NULL
+const uint8_t PRE_ARM      = NULL_MASK;                                      // Safe: LNG-V & LOX-V still open, others unpowered closed, 0b000000
+const uint8_t VENTS_CLOSED = FAIL_OPEN_MASK;                                 // (0b0000101 --> vent coils powered shut, pressures shut). It is redundant but naming makes it clear we r closing vents
+const uint8_t ARMED        = VENTS_CLOSED | (LNG_PRES_MASK | LOX_PRES_MASK); // Armed: Pressures powered open, LNG-V & LOX-V powered closed, 0b1100101
+const uint8_t LAUNCH       = ARMED | LNG_FLOW_MASK | LOX_FLOW_MASK;          // Launch: Pressures & Flows powered open, LNG-V & LOX-V powered closed
+const uint8_t ABORT        = 0b10000000;                                      // Abort: WAS GN2-V powered open, LNG-V & LOX-V unpowered (spring open). Now we don't have GN2 so it's NULL
 
 // ─────────────────────────────────────────────────────────────────────────────
 //                                 Pin Mapping
