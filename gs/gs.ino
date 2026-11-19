@@ -45,7 +45,7 @@ struct DebouncedInput
 // Instances – declared here for global lifetime; initialised in setup()
 DebouncedInput lngPressure, loxPressure, lngFlow, loxFlow;
 DebouncedInput lngVent, loxVent;
-DebouncedInput arm, abort_mission, launch;
+DebouncedInput vent_sw, arm, abort_mission, launch;
 DebouncedInput launch_M, fueling_M, dev_M;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -421,6 +421,13 @@ void LCD_LaunchMode()
     lcd.setCursor(0, 2);
     lcd.print("V:OPN  P:CLD  F:CLD");
   }
+  else if (VENTS_CLOSED == rocketState)
+  {
+    lcd.setCursor(0, 1);
+    lcd.print("    VENTS CLOSED   ");
+    lcd.setCursor(0, 2);
+    lcd.print("V:CLD  P:CLD  F:CLD");
+  }
   else if (ARMED == rocketState)
   {
     lcd.setCursor(0, 1);
@@ -475,6 +482,7 @@ void reset_readings()
   while (millis() - timer < 2000){
     // Read all swiches and buttons
     debounceSwitchRead(&arm);
+    debounceSwitchRead(&vent_sw);
     debounceAbortRead(&abort_mission);
     debounceButtonRead(&launch);
 
@@ -519,9 +527,10 @@ void launch_mode_fail_message(uint8_t event_id)
         lcd.print(" LAUNCH MODE FAILED");
         lcd.setCursor(0, 1);
         String errorMsg = "";
-        errorMsg = "ARM:" + String(arm.currState) +
-                   ", ABT:" + String(abort_mission.currState) +
-                   ", LAU:" + String(launch.currState);
+        errorMsg = "  A:" + String(arm.currState) +
+                   " V:" + String(vent_sw.currState) +
+                   " L:" + String(launch.currState) +
+                   " AB:" + String(abort_mission.currState);
 
         lcd.print(errorMsg);
         delay(1500);
@@ -547,14 +556,16 @@ bool launch_mode_check()
   }
 
   debounceSwitchRead(&arm);
+  debounceSwitchRead(&vent_sw);
   debounceAbortRead(&abort_mission);
   debounceButtonRead(&launch);
 
   unsigned int arm_switch = arm.currState;
+  unsigned int vent_switch = vent_sw.currState;
   unsigned int abort_button = abort_mission.currState;
   unsigned int launch_button = launch.currState;
 
-  if (arm_switch || abort_button || launch_button)
+  if (arm_switch || vent_switch || abort_button || launch_button)
   {
     launch_mode_fail_message(1);
     return false;
@@ -584,10 +595,12 @@ void launch_mode_logic()
 
   // Read selectors
   debounceSwitchRead(&arm);
+  debounceSwitchRead(&vent_sw);
   debounceAbortRead(&abort_mission);
   debounceButtonRead(&launch);
 
   unsigned int arm_switch = arm.currState;
+  unsigned int vent_switch = vent_sw.currState;
   unsigned int abort_button = abort_mission.currState;
   unsigned int launch_button = launch.currState;
 
@@ -599,58 +612,54 @@ void launch_mode_logic()
     {
       rocketState = ABORT;
     }
+    else if (vent_switch)
+    {
+      rocketState = VENTS_CLOSED;
+    }
+    // Note: flipping arm_switch while vent_switch is DOWN is ignored (cannot pressurize through open vents)
+    break;
+  case VENTS_CLOSED:
+    if (abort_button)
+    {
+      rocketState = ABORT;
+    }
+    else if (!vent_switch)
+    {
+      rocketState = PRE_ARM; // Operator toggled vents open
+    }
     else if (arm_switch)
     {
-      // Step 1: Power vents closed first
-      rocketState = VENTS_CLOSED;
-      lcd.setCursor(0, 1);
-      lcd.print("   SEALING VENTS   ");
-      lcd.setCursor(0, 2);
-      lcd.print("V:CLD  P:CLD  F:CLD");
-      sendRocketState(rocketState); // Transmit immediately
-
-      // Step 2: 500ms physical seating delay (with abort check)
-      unsigned long seat_timer = millis();
-      while (millis() - seat_timer < 500)
-      {
-        debounceAbortRead(&abort_mission);
-        if (abort_mission.currState)
-        {
-          rocketState = ABORT;
-          break;
-        }
-      }
-
-      // Step 3: Open pressure valves if not aborted
-      if (rocketState != ABORT)
-      {
-        rocketState = ARMED;
-      }
+      rocketState = ARMED; // Vents verified closed -> open press valves
     }
     break;
-
   case ARMED:
     if (abort_button)
+    {
       rocketState = ABORT;
+    }
     else if (!arm_switch)
+    {
+      // Disarmed: if vent switch is still UP, hold vents closed; else return to PRE_ARM
+      rocketState = vent_switch ? VENTS_CLOSED : PRE_ARM;
+    }
+    else if (!vent_switch)
+    {
+      // Vents opened while armed -> immediate cutoff of pressurization
       rocketState = PRE_ARM;
+    }
     else if (launch_button)
+    {
       rocketState = LAUNCH;
+    }
     break;
-
   case LAUNCH:
-    // In launch state abort may still be possible
-    // In static fire: abort is possible
-    // In launch: abort is not possible
     if (abort_button)
       rocketState = ABORT;
     break;
-
   case ABORT:
-    rocketState = ABORT; // Latched until system reset
+    rocketState = ABORT; // Latched until reset
     break;
   }
-
   // Refresh LCD display
   if (initial_rocketState != rocketState)
   {
@@ -899,6 +908,7 @@ void setup()
   pinMode(PIN_LNG_V, INPUT_PULLUP);
   pinMode(PIN_LOX_V, INPUT_PULLUP);
   pinMode(PIN_ARM, INPUT_PULLUP);
+  pinMode(PIN_VENT_SW, INPUT_PULLUP);
   pinMode(PIN_ABORT, INPUT_PULLUP);
   pinMode(PIN_LAUNCH, INPUT_PULLUP);
   pinMode(PIN_LAUNCH_M, INPUT_PULLUP);
@@ -914,6 +924,7 @@ void setup()
   lngVent       = {PIN_LNG_V,       LOW, LOW, 0, LNG_VENT_MASK, (FAIL_OPEN_MASK & LNG_VENT_MASK) != 0};
   loxVent       = {PIN_LOX_V,       LOW, LOW, 0, LOX_VENT_MASK, (FAIL_OPEN_MASK & LOX_VENT_MASK) != 0};
   arm           = {PIN_ARM,         LOW, LOW, 0, NULL_MASK,     false}; // NULL mask cannot be fail_open
+  vent_sw       = {PIN_VENT_SW,     LOW, LOW, 0, NULL_MASK,     false};
   abort_mission = {PIN_ABORT,       LOW, LOW, 0, NULL_MASK,     false};
   launch        = {PIN_LAUNCH,      LOW, LOW, 0, NULL_MASK,     false};
   launch_M      = {PIN_LAUNCH_M,    LOW, LOW, 0, NULL_MASK,     false};

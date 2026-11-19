@@ -35,6 +35,7 @@ const int PIN_LNG_F = 49;
 const int PIN_LOX_F = 47;
 const int PIN_LNG_V = 45;
 const int PIN_LOX_V = 44;
+const int PIN_VENT_SW = 19;       // Old GN2 switch next to ARM; actuates dual vents in Launch Mode
 const int PIN_ARM = 18;
 const int PIN_LAUNCH = 17;
 const int PIN_ABORT = 26;         //Active-HIGH wiring

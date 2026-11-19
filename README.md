@@ -21,8 +21,7 @@ The ground station manages 6 active propellant and pressurization valves. Tank v
 | `LOX-V` | LOX Cryogenic Tank Vent | **Fail-Open (NO)** | **OPEN** (0V unpowered) | **CLOSED** (Powered) |
 
 > [!NOTE]
-> * `GN2-V` has been removed from the plumbing architecture; GN2 is split between `LNG-P` and `LOX-P`.
-> * The console faceplate contains a 7th toggle lever that is unlabeled and unwired; operators must ignore it.
+> * `GN2-V` has been removed from the plumbing architecture; GN2 is split between `LNG-P` and `LOX-P`. The toggle switch previously dedicated to GN2 (next to the ARM switch) is now repurposed as the **Vent Actuation Switch** in Launch Mode.
 > * **Cryogenic Boil-Off & Pad Power:** Because tank vents are Fail-Open, keeping their levers DOWN (unpowered) leaves vents naturally open to vent boil-off without drawing battery power or heating solenoid coils.
 > * **Loss of Signal (Fail-Safe):** In any power loss or cable disconnect, all coils drop to 0V: flows snap shut and vents spring wide open.
 
@@ -49,7 +48,7 @@ const uint8_t FAIL_OPEN_MASK = LNG_VENT_MASK | LOX_VENT_MASK; // 0b00000101
 ### Launch Sequence Encoding
 ```cpp
 const uint8_t PRE_ARM      = NULL_MASK;                                      // 0b00000000 (Vents unpowered OPN, flows/pressures unpowered CLD)
-const uint8_t VENTS_CLOSED = FAIL_OPEN_MASK;                                 // 0b00000101 (Vent coils energized shut; 500 ms staged arming delay)
+const uint8_t VENTS_CLOSED = FAIL_OPEN_MASK;                                 // 0b00000101 (Vent coils energized shut via Vent Switch; visual confirmation prior to pressurization)
 const uint8_t ARMED        = VENTS_CLOSED | (LNG_PRES_MASK | LOX_PRES_MASK); // 0b01100101 (Vents powered shut, pressures powered open)
 const uint8_t LAUNCH       = ARMED | LNG_FLOW_MASK | LOX_FLOW_MASK;          // 0b01101111 (Vents shut, pressures open, main flows open)
 const uint8_t ABORT        = 0b10000000;                                     // Bit 7 non-valve mask (0V to all valve coils; vents spring open)
@@ -64,7 +63,7 @@ flowchart TD
     subgraph MODES["Console Operating Modes"]
         DEV["DEV MODE\n(Full Manual Valve Control)"]
         FUEL["FUELING MODE\n(Vents Manual, Flows/Press Locked CLD)"]
-        LAUNCH["LAUNCH MODE\n(Automated Terminal Countdown FSM)"]
+        LAUNCH["LAUNCH MODE\n(Decoupled Staged Countdown FSM)"]
     end
 
     DEV <--> FUEL
@@ -73,18 +72,19 @@ flowchart TD
 
     subgraph LAUNCH_FSM["Launch Mode State Machine"]
         PRE["PRE-ARM (0b00000000)\nV:OPN  P:CLD  F:CLD"]
-        SEAL["SEALING VENTS (0b00000101)\n500 ms Staged Seating Delay"]
+        VNT["VENTS CLOSED (0b00000101)\nVent Pre-Actuation & Visual Check"]
         ARM["ARM MODE (0b01100101)\nV:CLD  P:OPN  F:CLD"]
         IGN["ROCKET LAUNCHING! (0b01101111)\nV:CLD  P:OPN  F:OPN"]
         ABT["MISSION ABORT! (0b10000000)\n0V to all coils | Vents Spring OPN"]
 
-        PRE -->|ARM Switch UP| SEAL
-        SEAL -->|After 500 ms| ARM
-        ARM -->|Hold Count: ARM Switch DOWN| PRE
+        PRE -->|Vent Switch UP| VNT
+        VNT -->|Vent Switch DOWN| PRE
+        VNT -->|ARM Switch UP (Vents Verified)| ARM
+        ARM -->|Hold Count: ARM Switch DOWN| VNT
         ARM -->|LAUNCH Button Pressed| IGN
 
         PRE -.->|ABORT Button| ABT
-        SEAL -.->|ABORT Button| ABT
+        VNT -.->|ABORT Button| ABT
         ARM -.->|ABORT Button| ABT
         IGN -.->|ABORT Button| ABT
     end
@@ -102,24 +102,25 @@ flowchart TD
 * Used during propellant loading, line chilling, and tank farm operations.
 * Flow valves (`LNG-F`, `LOX-F`) and pressurization valves (`LNG-P`, `LOX-P`) are **locked closed** by software.
 * Tank vent valves (`LNG-V`, `LOX-V`) remain under manual toggle control to vent boil-off or seal tanks for chilling.
+* **Pre-Launch Cryogenic Exercising:** Operators use Fueling Mode immediately post-fill to cycle vent toggles 3–5 times, dislodging ice and ensuring smooth pneumatic actuation prior to entering Launch Mode.
 
 ### Mode 3: Launch Mode (`LAUNCH MODE`) — Low Manual Risk (Automated Safety)
 * All 6 individual toggle levers are completely ignored by software.
-* Terminal countdown is controlled strictly via the **ARM** switch, **LAUNCH** pushbutton, and **ABORT** button.
+* Terminal countdown is controlled strictly via the **Vent Switch**, covered **ARM** switch, **LAUNCH** pushbutton, and **ABORT** button.
 
 ---
 
 ## 4. Key Safety Interlocks
 
 1. **Launch Entry Interlock:**
-   * Prevents entering Launch Mode if any console toggle lever is left UP / ON, if the ARM switch is UP, or if the ABORT button is latched.
+   * Prevents entering Launch Mode if any console toggle lever is left UP / ON, if the ARM switch or Vent Switch is UP, or if the ABORT button is latched.
    * On invalid entry, displays `"FLICK ALL LEVERS TO OFF / DOWN"` and safely returns to the previous mode (or `DEV MODE` if from startup).
 2. **In-Flight Mode Lockout:**
-   * Once in `VENTS_CLOSED`, `ARMED`, or `LAUNCH`, the `DEV` and `FUEL` mode buttons are **completely ignored**. An operator cannot accidentally switch modes or dump pressure while armed. The operator must disarm (flip ARM switch down) or depress ABORT.
+   * Once in `VENTS_CLOSED`, `ARMED`, or `LAUNCH`, the `DEV` and `FUEL` mode buttons are **completely ignored**. An operator cannot accidentally switch modes or dump pressure while armed. The operator must disarm (flip ARM and Vent switches down) or depress ABORT.
 3. **E-Stop Mode Transition Lockout:**
    * The console refuses all mode transitions while the mechanical mushroom ABORT button remains mechanically latched down. Operators must physically unlatch the button before selecting a recovery mode.
-4. **Staged Arming (Pressurant Conservation):**
-   * Flipping the ARM switch powers the vent valves closed for 500 ms (`SEALING VENTS`) before opening the GN2 pressurization valves (`LNG-P`, `LOX-P`). This prevents venting high-pressure GN2 pressurant out the open vent line while poppets seat.
+4. **Decoupled 2-Stage Arming & Pressurant Conservation:**
+   * Rather than relying on a blind timer, the operator first flips the Vent Switch to seal vents (`VENTS CLOSED`), visually confirms closure via pad cameras/frost plume cutoff, and only then flips the guarded ARM switch to open GN2 pressurization valves (`ARM MODE`). Pressurization is locked out if the Vent Switch is DOWN.
 5. **Abort Precedence & Zero Pad Power:**
    * Depressing the red ABORT button immediately cuts coil power to **0V** across all rocket valves: vent valves spring open, while main propellant and pressure valves snap closed.
 6. **Abort Exit Interlock:**
