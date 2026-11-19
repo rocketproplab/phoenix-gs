@@ -1,0 +1,8 @@
+# Compiled binaries & artifacts
+*.exe
+*.o
+*.hex
+*.bin
+*.elf
+build/
+.vscode/

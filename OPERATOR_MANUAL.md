@@ -2,7 +2,7 @@
 
 > [!IMPORTANT]
 > **Operational Reference for Launch Conductors, Chief Engineers, and Fluids Leads**
-> This manual details the physical console operation, operating modes, safety interlocks, and procedural rules of the **Phoenix Ground Control Box**. For repository setup and firmware compilation, refer to [README.md](README.md).
+> This manual details the physical console operation, operating modes, safety interlocks, and procedural rules of the **Phoenix Ground Control Box**. For repository setup and firmware compilation, refer to [README.md](README.md). For step-by-step bench checks and pre-flight sign-off checklists, refer to [TESTING_PROCEDURES.md](TESTING_PROCEDURES.md).
 
 ---
 
@@ -17,7 +17,7 @@ Before touching any switch on the Phoenix Ground Control Box, all operators must
 > 3. **DO NOT enter `DEV MODE` with levers flipped UP:** `DEV MODE` provides 100% direct, uninhibited manual control over valve coils. Any toggle lever left in the UP position will instantly energize that valve coil on the rocket pad.
 > 4. **DO NOT leave vent valves powered shut during pad standby:** Powering vents closed (`UP / ON`) continuously draws battery power, risks solenoid thermal degradation, and traps cryogenic boil-off gas. Keep vent levers **DOWN / OFF** during standby to vent boil-off naturally.
 > 5. **DO NOT expect the Ground Station to auto-abort on tank overpressure:** The firmware does **not** evaluate pressure transducers for automated aborts. Line safety relies exclusively on operator situational awareness, manual abort triggers, and physical mechanical relief valves on the plumbing.
-> 6. **DO NOT power-cycle the console while propellant tanks are pressurized:** Cutting 12V/battery power to the console immediately drops all outputs to 0V. Tank vents will instantly spring wide open, causing violent depressurization.
+> 6. **DO NOT power-cycle the console while propellant tanks are pressurized:** Cutting 24V/battery power to the console immediately drops all outputs to 0V. Tank vents will instantly spring wide open, causing violent depressurization.
 > 7. **DO NOT attempt to force mode buttons while Armed, Vents Closed, or Aborted:** Mode switches (`DEV` / `FUEL`) are hard-locked while `VENTS_CLOSED` or `ARMED` (flip ARM and Vent switches DOWN first) and while `ABORT` is latched down (twist and pull the red mushroom button UP first).
 
 ---
@@ -326,4 +326,4 @@ If an operator unlatches the ABORT button and presses `DEV MODE` or `FUELING MOD
 * **Manual DEV Mode Misinputs:** In `DEV MODE`, all valve levers are live. The console will **not** stop an operator from opening a main propellant flow valve while tanks are pressurized if DEV mode is active.
 * **Manual Valve Commands Post-Recovery:** While the console prevents exiting Abort with levers UP, once DEV mode is entered, all levers are live. The console will not prevent an operator from manually toggling a valve ON after entering DEV mode.
 * **Pneumatic / Bottle Pressure Monitoring:** The console cannot detect whether GN2 supply bottles are depleted or if manual hand valves on the pad are closed.
-* **Pad Power Faults:** If external 12V/24V solenoid power supplies fail at the pad, the console will report commanded states, but valves will physically revert to their unpowered states (vents open, flows closed).
+* **Pad Power Faults:** If external 24V solenoid power supplies fail at the pad, the console will report commanded states, but valves will physically revert to their unpowered states (vents open, flows closed).

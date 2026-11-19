@@ -3,7 +3,8 @@
 Standalone ground control console firmware powered by an Arduino Mega 2560 and a W5500 Ethernet module. Communicates over umbilical Ethernet to command rocket valve boards and read telemetry with hardware and software safety interlocks.
 
 > [!TIP]
-> For Launch Conductors, Chief Engineers, and Fluids Leads, refer to the full **[Operator & Flight Controller Manual](OPERATOR_MANUAL.md)** for operational rules, bench-check procedures, and console interlocks.
+> * For Launch Conductors, Chief Engineers, and Fluids Leads, refer to the full **[Operator & Flight Controller Manual](OPERATOR_MANUAL.md)** for operational rules, flight procedures, and console interlocks.
+> * For step-by-step physical bench checks and pre-flight sign-off checklists, refer to the **[Hardware Verification & Validation Test Procedures](TESTING_PROCEDURES.md)**.
 
 ---
 
