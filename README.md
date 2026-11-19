@@ -122,6 +122,9 @@ flowchart TD
    * Flipping the ARM switch powers the vent valves closed for 500 ms (`SEALING VENTS`) before opening the GN2 pressurization valves (`LNG-P`, `LOX-P`). This prevents venting high-pressure GN2 pressurant out the open vent line while poppets seat.
 5. **Abort Precedence & Zero Pad Power:**
    * Depressing the red ABORT button immediately cuts coil power to **0V** across all rocket valves: vent valves spring open, while main propellant and pressure valves snap closed.
+6. **Abort Exit Interlock:**
+   * Exiting `MISSION ABORT` into `DEV MODE` or `FUELING MODE` is **hard-blocked** if any valve toggle lever is left UP / ON.
+   * Displays `"ABORT EXIT BLOCKED / FLICK ALL LEVERS / TO OFF / DOWN"` and keeps all valve outputs at 0V until levers are confirmed DOWN.
 
 ---
 

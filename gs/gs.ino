@@ -206,6 +206,47 @@ void debounceSwitchRead(DebouncedInput *input)
 }
 
 /**
+ * @brief  Check if all 6 panel valve levers are in the DOWN / OFF position
+ * @return true if all levers are DOWN (0), false if any lever is UP (1)
+ */
+bool check_all_levers_down()
+{
+  DebouncedInput *valve_list[] = {&lngPressure,
+                                  &loxPressure,
+                                  &lngFlow,
+                                  &loxFlow,
+                                  &lngVent,
+                                  &loxVent};
+
+  for (DebouncedInput *item : valve_list)
+  {
+    // Active-LOW wiring: digitalRead() returns LOW when lever is physically UP / ON
+    if (digitalRead(item->pin) == LOW)
+    {
+      item->currState = 1;
+      return false; // Found a lever UP!
+    }
+    item->currState = 0;
+  }
+  return true;
+}
+
+/**
+ * @brief  Display warning when operator attempts to exit ABORT with levers UP
+ */
+void abort_exit_fail_message()
+{
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print(" ABORT EXIT BLOCKED ");
+  lcd.setCursor(0, 1);
+  lcd.print("  FLICK ALL LEVERS  ");
+  lcd.setCursor(0, 2);
+  lcd.print("   TO OFF / DOWN    ");
+  delay(2000);
+}
+
+/**
  * @brief  Determine the operator‑selected mode based on the three mode buttons.
  *
  * The function enforces mutual exclusion: if more than one mode button is held
@@ -248,6 +289,18 @@ MODE getModePress(MODE PRE_MODE)
 
   unsigned int fueling_button = fueling_M.currState;
   unsigned int dev_button = dev_M.currState;
+
+  // SAFETY INTERLOCK: Forbid exiting ABORT into DEV or FUELING if any valve levers are UP!
+  // Prevents instantly applying power to valves upon clearing abort.
+  if (PRE_MODE == LAUNCH_MODE && rocketState == ABORT && (fueling_button || dev_button))
+  {
+    if (!check_all_levers_down())
+    {
+      abort_exit_fail_message();
+      LCD_LaunchMode(); // Restore MISSION ABORT display
+      return PRE_MODE;  // Reject transition!
+    }
+  }
 
   if (launch_button + fueling_button + dev_button > 1)
   {
@@ -486,29 +539,8 @@ void launch_mode_fail_message(uint8_t event_id)
  */
 bool launch_mode_check()
 {
-
-  DebouncedInput *valve_list[] = {&lngPressure,
-                                  &loxPressure,
-                                  &lngFlow,
-                                  &loxFlow,
-                                  &lngVent,
-                                  &loxVent};
-
-  uint8_t valve_open_count = 0;
-
-  for (DebouncedInput *item : valve_list)
-  {
-    debounceSwitchRead(item);
-
-    // Require all panel levers to be DOWN / OFF to enter Launch Mode
-    if (item->currState)
-    {
-    valve_open_count++;
-    }
-  }
-
-  // Some valves are still opened, closed them before entering into launch mode
-  if (valve_open_count != 0)
+  // Check that all 6 valve levers are DOWN / OFF
+  if (!check_all_levers_down())
   {
     launch_mode_fail_message(0);
     return false;
@@ -522,17 +554,15 @@ bool launch_mode_check()
   unsigned int abort_button = abort_mission.currState;
   unsigned int launch_button = launch.currState;
 
-  // One of the launch mode buttons were opened, close them before entering
-  // into launch mode
-  if (arm_switch || abort_button || launch_button){
+  if (arm_switch || abort_button || launch_button)
+  {
     launch_mode_fail_message(1);
     return false;
   }
-
-  //Force the state to reset to PRE_ARM
+  
+  // Explicitly initialize state machine to PRE_ARM upon passing check
   rocketState = PRE_ARM;
 
-  // Safety entering into launch mode
   return true;
 }
 

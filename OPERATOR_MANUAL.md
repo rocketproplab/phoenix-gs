@@ -6,6 +6,22 @@
 
 ---
 
+## 🚨 TL;DR: Critical Operator "DO NOT" Rules
+
+Before touching any switch on the Phoenix Ground Control Box, all operators must memorize these core flight-line safety rules:
+
+> [!WARNING]
+> ### Golden Rules for Console Operators
+> 1. **DO NOT assume Lever DOWN means Closed:** Cryogenic tank vents (`LNG-V` and `LOX-V`) are **Fail-Open (Normally Open)**. Setting a vent lever **DOWN / OFF cuts electrical power and leaves the valve physically OPEN (`OPN`)**. Setting it **UP / ON applies power to force the valve CLOSED (`CLD`)**. Always verify true physical valve state on the LCD screen!
+> 2. **DO NOT enter `DEV MODE` with levers flipped UP:** `DEV MODE` provides 100% direct, uninhibited manual control over valve coils. Any toggle lever left in the UP position will instantly energize that valve coil on the rocket pad.
+> 3. **DO NOT leave vent valves powered shut during pad standby:** Powering vents closed (`UP / ON`) continuously draws battery power, risks solenoid thermal degradation, and traps cryogenic boil-off gas. Keep vent levers **DOWN / OFF** during standby to vent boil-off naturally.
+> 4. **DO NOT expect the Ground Station to auto-abort on tank overpressure:** The firmware does **not** evaluate pressure transducers for automated aborts. Line safety relies exclusively on operator situational awareness, manual abort triggers, and physical mechanical relief valves on the plumbing.
+> 5. **DO NOT operate the unlabeled 7th toggle lever:** The console faceplate contains an unwired 7th switch (a remnant of a removed pneumatic line). It is completely disconnected and must be ignored.
+> 6. **DO NOT power-cycle the console while propellant tanks are pressurized:** Cutting 12V/battery power to the console immediately drops all outputs to 0V. Tank vents will instantly spring wide open, causing violent depressurization.
+> 7. **DO NOT attempt to force mode buttons while Armed or Aborted:** Mode switches (`DEV` / `FUEL`) are hard-locked while `ARMED` (flip the guarded ARM switch DOWN first) and while `ABORT` is latched down (twist and pull the red mushroom button UP first).
+
+---
+
 ## 1. System Overview & Physical Philosophy
 
 The Ground Station is a standalone, hardwired control console. It communicates directly with the rocket’s valve controller boards over an umbilical Ethernet link.
@@ -229,15 +245,31 @@ flowchart TD
 To clear an abort after the pad is declared safe:
 1. **Verify All Console Levers DOWN / OFF:** Physically inspect the console and ensure **every single toggle lever is in the DOWN / OFF position**.
 2. **Unlatch the ABORT Button:** Physically twist or pull the red mushroom button **UP**. (The console will refuse to switch modes while the button remains mechanically held down).
-3. **Select Safe Mode:** Press the **`DEV MODE`** button.
-4. The console clears the abort latch and displays the manual valve table in DEV mode.
+3. **Select Safe Mode:** Press the **`DEV MODE`** (or **`FUELING MODE`**) button.
+4. The console clears the abort latch, runs the 2-second switch stabilization routine, and displays the manual valve table in DEV mode with all valves unpowered.
+
+#### The Abort Exit Interlock (`ABORT EXIT BLOCKED`)
+To prevent catastrophic valve actuation during pad safing, firmware enforces a hard hardware check on all 6 toggle levers before allowing exit from `MISSION ABORT`.
+
+If an operator unlatches the ABORT button and presses `DEV MODE` or `FUELING MODE` while **any valve lever is left UP / ON**:
+1. The mode transition is **immediately rejected**.
+2. The console LCD flashes the rejection screen for 2 seconds:
+   ```text
+   +--------------------+
+   | ABORT EXIT BLOCKED |
+   |  FLICK ALL LEVERS  |
+   |   TO OFF / DOWN    |
+   +--------------------+
+   ```
+3. The LCD automatically restores the `MISSION ABORT!` status screen.
+4. **Zero electrical power is applied to any valve coil**; the console remains safely locked at 0V.
+5. Once all levers are physically returned to **DOWN / OFF**, pressing `DEV MODE` or `FUELING MODE` cleanly exits the abort.
 
 > [!CAUTION]
-> **DANGER: Verify All Levers DOWN Before Exiting Abort Mode!**
-> While the console is latched in `MISSION ABORT`, electrical power to all valves is locked at 0V regardless of lever positions. However, **`DEV MODE` reads physical lever states continuously in real time**.
-> If any valve toggle levers were accidentally bumped, switched, or left **UP / ON** while in Abort mode, those switches have no effect *while abort remains active*. **However, the moment you unlatch the ABORT button and press `DEV MODE`, the console immediately applies electrical power to those valve coils!**
-> For example, if a main propellant flow or pressurization lever is left UP, that valve will snap wide open on the pad the instant you enter DEV mode.
-> **Standard Operating Procedure:** Always visually verify that all 6 valve control levers are physically DOWN / OFF before unlatching the ABORT button and entering DEV mode.
+> **Maintain Operator Vigilance During Abort Recovery:**
+> While firmware enforces an active hardware interlock that blocks abort exit if levers are UP, **operators must never rely on software as their sole defense against pad hazards**.
+> In `DEV MODE`, all valve levers are 100% live in real time. If an operator enters DEV mode and subsequently flips a switch UP without checking line status, that valve energizes immediately.
+> **Standard Operating Procedure:** Always maintain strict checklist discipline, verify lines are depressurized and pad areas are cleared, and confirm all switches are DOWN / OFF before clearing an emergency abort.
 
 ---
 
@@ -250,6 +282,13 @@ To clear an abort after the pad is declared safe:
     FLICK ALL LEVERS  
       TO OFF / DOWN   
   ```
+* **Abort Exit Interlock:** Exiting `MISSION ABORT` into `DEV MODE` or `FUELING MODE` is **hard-blocked** if any valve toggle lever is left UP. If an operator attempts to switch modes with a lever UP, the console rejects the transition, displays:
+  ```text
+   ABORT EXIT BLOCKED 
+    FLICK ALL LEVERS  
+     TO OFF / DOWN    
+  ```
+  and restores the locked `MISSION ABORT!` screen, maintaining 0V to all valve coils.
 * **Arm / Abort Entry Interlock:** Entering Launch Mode is **blocked** if the ARM switch is UP or the ABORT button is down.
 * **In-Flight Mode Lockout:** Once the rocket is in `ARM MODE` or `LAUNCH`, **all mode buttons (DEV / FUEL) are completely locked out**. An operator cannot accidentally switch modes or dump pressure while armed. The operator must explicitly disarm (flip ARM down) or hit ABORT.
 * **E-Stop Reset Lockout:** The console will not allow mode transitions out of an abort until the ABORT button is physically pulled back UP.
@@ -261,6 +300,6 @@ To clear an abort after the pad is declared safe:
 ### What the Ground Station DOES NOT Protect (Fluids & Crew Responsibilities):
 * **Automatic Overpressure Abort:** The ground station does **not** automatically trigger an abort if tank pressure rises too high. Operators and Fluids engineers must monitor pressure gauges / telemetry; line safety relies on physical spring-loaded mechanical relief valves on the plumbing.
 * **Manual DEV Mode Misinputs:** In `DEV MODE`, all valve levers are live. The console will **not** stop an operator from opening a main propellant flow valve while tanks are pressurized if DEV mode is active.
-* **Pre-Existing Lever States on Abort Exit:** In `DEV MODE`, all valve coils immediately take the state of their physical faceplate levers. If an operator exits `MISSION ABORT` into `DEV MODE` while a toggle lever is left UP, the console will instantly apply power to that valve.
+* **Manual Valve Commands Post-Recovery:** While the console prevents exiting Abort with levers UP, once DEV mode is entered, all levers are live. The console will not prevent an operator from manually toggling a valve ON after entering DEV mode.
 * **Pneumatic / Bottle Pressure Monitoring:** The console cannot detect whether GN2 supply bottles are depleted or if manual hand valves on the pad are closed.
 * **Pad Power Faults:** If external 12V/24V solenoid power supplies fail at the pad, the console will report commanded states, but valves will physically revert to their unpowered states (vents open, flows closed).
