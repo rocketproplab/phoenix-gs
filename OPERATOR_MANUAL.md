@@ -25,7 +25,7 @@ Before touching any switch on the Phoenix Ground Control Box, all operators must
 > 3. **DO NOT enter `DEV MODE` with levers flipped UP:** `DEV MODE` provides 100% direct, uninhibited manual control over valve coils. Any toggle lever left in the UP position will instantly energize that valve coil on the rocket pad.
 > 4. **DO NOT leave vent valves powered shut during pad standby:** Powering vents closed (`UP / ON`) continuously draws battery power, risks solenoid thermal degradation, and traps cryogenic boil-off gas. Keep vent levers **DOWN / OFF** during standby to vent boil-off naturally.
 > 5. **DO NOT expect the Ground Station to auto-abort on tank overpressure:** The firmware does **not** evaluate pressure transducers for automated aborts. Line safety relies exclusively on operator situational awareness, manual abort triggers, and physical mechanical relief valves on the plumbing.
-> 6. **DO NOT power-cycle the console while propellant tanks are pressurized:** Cutting 24V/battery power to the console immediately drops all outputs to 0V. Tank vents will instantly spring wide open, causing violent depressurization.
+> 6. **DO NOT power-cycle the console while propellant tanks are pressurized:** When the Ground Station completes bootup, it initializes into idle `NONE_MODE` and broadcasts `0b00000000` (`0x00`), de-energizing all valve coils. Cryogenic tank vents will instantly spring wide open, causing rapid depressurization.
 > 7. **DO NOT attempt to force mode buttons while Armed, Vents Closed, or Aborted:** Mode switches (`DEV` / `FUEL`) are hard-locked while `VENTS_CLOSED` or `ARMED` (flip ARM and Vent switches DOWN first) and while `ABORT` is latched down (twist and pull the red mushroom button UP first).
 
 ---

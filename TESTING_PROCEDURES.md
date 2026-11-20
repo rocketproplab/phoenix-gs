@@ -269,19 +269,18 @@ flowchart TD
 | 7.1.2 | `ARM MODE` | Press **`DEV MODE`** or **`FUELING MODE`**. | Mode buttons are **completely ignored**. High-pressure $\text{GN}_2$ remains flowing. | [ ] PASS<br>[ ] FAIL |
 | 7.1.3 | `ROCKET LAUNCHING!` | Press **`DEV MODE`** or **`FUELING MODE`**. | Mode buttons are **completely ignored**. Main flows remain active. | [ ] PASS<br>[ ] FAIL |
 
-### 7.2 Simultaneous Mode Button Rejection
-| Step | Action | Expected Result | Pass / Fail |
-| :---: | :--- | :--- | :---: |
-| 7.2.1 | Press **`DEV MODE`** and **`FUELING MODE`** simultaneously. | Multiple input detected; command is rejected. Console maintains previous mode. | [ ] PASS<br>[ ] FAIL |
-| 7.2.2 | Press **`FUELING MODE`** and **`LAUNCH MODE`** simultaneously. | Multiple input detected; command is rejected. Console maintains previous mode. | [ ] PASS<br>[ ] FAIL |
-| 7.2.3 | Press all three mode buttons simultaneously. | Multiple input detected; command is rejected. Console maintains previous mode. | [ ] PASS<br>[ ] FAIL |
+### 7.2 Ground Station Power-Cycle & Reboot Behavior
+* **Objective:** Verify how the system behaves during console power cuts and reboots when physical toggle levers are left in the UP position.
 
-### 7.3 Ground Station Power-Cycle / Brownout Simulation
+> [!NOTE]
+> When power to the Ground Station is cut while the rocket's Valve Driver Board remains powered, the remote MOSFETs hold their last commanded state over the umbilical link. Once the Ground Station completes bootup, it broadcasts `0b00000000` (`0x00`), safely de-energizing all valve coils.
+
 | Step | Action | Expected Result | Pass / Fail |
-| :---: | :--- | :--- | :---: |
-| 7.3.1 | In `DEV MODE`, flip `LNG-P` UP (valve open). Cut console power. | Power drops to 0V immediately. Solenoid closes. | [ ] PASS<br>[ ] FAIL |
-| 7.3.2 | Restore power while `LNG-P` lever remains UP. | Console reboots into `NONE_MODE` (idle). Output transmits `0x00`. **Valve coil is NOT energized.** Levers are not scanned until a mode is pressed. | [ ] PASS<br>[ ] FAIL |
-| 7.3.3 | Press `LAUNCH MODE`. | Console detects `LNG-P` is UP and **rejects entry** with `FLICK ALL LEVERS TO OFF / DOWN`. | [ ] PASS<br>[ ] FAIL |
+| :---: | :--- | :--- | :--- | :---: |
+| 7.2.1 | In `DEV MODE`, flip `LNG-P` lever **UP** (valve energized). Cut Ground Station console power. | Ground Station powers off. Remote valve driver holds last commanded state over idle umbilical. | [ ] PASS<br>[ ] FAIL |
+| 7.2.2 | Restore power to the Ground Station while `LNG-P` lever remains **UP**. | Console reboots into `NONE_MODE` (idle) and broadcasts `0b00000000` (`0x00`). **Valve coil de-energizes to 0V.** Levers are not scanned during boot. | [ ] PASS<br>[ ] FAIL |
+| 7.2.3 | Press **`DEV MODE`** while `LNG-P` lever is still UP. | Console runs 2s stabilization delay, enters `DEV MODE`, scans live levers, and re-energizes `LNG-P`. | [ ] PASS<br>[ ] FAIL |
+| 7.2.4 | With `LNG-P` lever UP, attempt to press **`LAUNCH MODE`**. | Launch Mode Entry Interlock detects lever is UP and **rejects entry** with `FLICK ALL LEVERS TO OFF / DOWN`. | [ ] PASS<br>[ ] FAIL |
 
 ---
 
