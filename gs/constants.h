@@ -7,23 +7,23 @@
 //                               State Encoding
 // ─────────────────────────────────────────────────────────────────────────────
 /** An 8 bits packet that holds the current valve & control state */
-
-// Launch sequence encoding
-const uint8_t PRE_ARM = 0b0000000; // Safe: all valves closed
-const uint8_t ABORT = 0b0010101;   // Abort: open all vent valves
-const uint8_t ARMED = 0b1100000;   // Armed: ready to launch, waiting trigger
-const uint8_t LAUNCH = 0b1101010;  // Launch: ignition/flight started
-
 // Individual valve masks
-const uint8_t LNG_PRES_MASK = 0b1000000;
-const uint8_t LOX_PRES_MASK = 0b0100000;
-const uint8_t GN2_VENT_MASK = 0b0010000;
-const uint8_t LNG_FLOW_MASK = 0b0001000;
-const uint8_t LNG_VENT_MASK = 0b0000100;
-const uint8_t LOX_FLOW_MASK = 0b0000010;
-const uint8_t LOX_VENT_MASK = 0b0000001;
-const uint8_t NULL_MASK = 0b0000000;
-const uint8_t FAIL_OPEN_MASK = 0b0000101; //LNG-V or LOX-V FAIL OPEN MASKS
+const uint8_t LNG_PRES_MASK = 0b01000000; // Fail-Closed
+const uint8_t LOX_PRES_MASK = 0b00100000; // Fail-Closed
+const uint8_t LNG_FLOW_MASK = 0b00001000; // Fail-Closed
+const uint8_t LNG_VENT_MASK = 0b00000100; // Fail-Open
+const uint8_t LOX_FLOW_MASK = 0b00000010; // Fail-Closed
+const uint8_t LOX_VENT_MASK = 0b00000001; // Fail-Open
+const uint8_t NULL_MASK     = 0b00000000;
+// Fail-Open Mask: easily flip valves between fail-closed and fail-open here
+const uint8_t FAIL_OPEN_MASK = LNG_VENT_MASK | LOX_VENT_MASK; // Should be 0b0000101
+
+// Launch sequence coil power encoding (Logical State ^ FAIL_OPEN_MASK)
+const uint8_t PRE_ARM      = NULL_MASK;                                      // Safe: LNG-V & LOX-V still open, others unpowered closed, 0b000000
+const uint8_t VENTS_CLOSED = FAIL_OPEN_MASK;                                 // (0b0000101 --> vent coils powered shut, pressures shut). It is redundant but naming makes it clear we r closing vents
+const uint8_t ARMED        = VENTS_CLOSED | (LNG_PRES_MASK | LOX_PRES_MASK); // Armed: Pressures powered open, LNG-V & LOX-V powered closed, 0b1100101
+const uint8_t LAUNCH       = ARMED | LNG_FLOW_MASK | LOX_FLOW_MASK;          // Launch: Pressures & Flows powered open, LNG-V & LOX-V powered closed
+const uint8_t ABORT        = 0b10000000;                                      // Abort: WAS GN2-V powered open, LNG-V & LOX-V unpowered (spring open). Now we don't have GN2 so it's NULL
 
 // ─────────────────────────────────────────────────────────────────────────────
 //                                 Pin Mapping
@@ -33,9 +33,9 @@ const int PIN_LNG_P = 48;
 const int PIN_LOX_P = 46;
 const int PIN_LNG_F = 49;
 const int PIN_LOX_F = 47;
-const int PIN_GN2_V = 19;
 const int PIN_LNG_V = 45;
 const int PIN_LOX_V = 44;
+const int PIN_VENT_SW = 19;       // Old GN2 switch next to ARM; actuates dual vents in Launch Mode
 const int PIN_ARM = 18;
 const int PIN_LAUNCH = 17;
 const int PIN_ABORT = 26;         //Active-HIGH wiring
@@ -66,4 +66,6 @@ const uint8_t MAC_SENSOR_GIGA[6] = {0x02, 0x53, 0x49,
 //                           Sensor Count Setup
 // ─────────────────────────────────────────────────────────────────────────────
 const size_t NUM_PTS = 7;
+const size_t NUM_LCS = 3;
+const size_t NUM_TCS = 5;
 #endif

@@ -39,12 +39,13 @@ struct DebouncedInput
   unsigned int lastState;
   unsigned long lastDebounceTime;
   uint8_t mask;
+  bool isFailOpen;
 };
 
 // Instances – declared here for global lifetime; initialised in setup()
 DebouncedInput lngPressure, loxPressure, lngFlow, loxFlow;
-DebouncedInput gn2Vent, lngVent, loxVent;
-DebouncedInput arm, abort_mission, launch;
+DebouncedInput lngVent, loxVent;
+DebouncedInput vent_sw, arm, abort_mission, launch;
 DebouncedInput launch_M, fueling_M, dev_M;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -61,6 +62,7 @@ enum MODE
 MODE pre_operationMode = NONE_MODE;
 MODE operationMode = NONE_MODE;
 bool launchEntryLocked = false;
+bool vent_ready_to_open = false; // Latch to guarantee manual cycling before vents can open
 
 // ─────────────────────────────────────────────────────────────────────────────
 //                           Ethernet (MAC‑RAW) Setup
@@ -205,6 +207,47 @@ void debounceSwitchRead(DebouncedInput *input)
 }
 
 /**
+ * @brief  Check if all 6 panel valve levers are in the DOWN / OFF position
+ * @return true if all levers are DOWN (0), false if any lever is UP (1)
+ */
+bool check_all_levers_down()
+{
+  DebouncedInput *valve_list[] = {&lngPressure,
+                                  &loxPressure,
+                                  &lngFlow,
+                                  &loxFlow,
+                                  &lngVent,
+                                  &loxVent};
+
+  for (DebouncedInput *item : valve_list)
+  {
+    // Active-LOW wiring: digitalRead() returns LOW when lever is physically UP / ON
+    if (digitalRead(item->pin) == LOW)
+    {
+      item->currState = 1;
+      return false; // Found a lever UP!
+    }
+    item->currState = 0;
+  }
+  return true;
+}
+
+/**
+ * @brief  Display warning when operator attempts to exit ABORT with levers UP
+ */
+void abort_exit_fail_message()
+{
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print(" ABORT EXIT BLOCKED ");
+  lcd.setCursor(0, 1);
+  lcd.print("  FLICK ALL LEVERS  ");
+  lcd.setCursor(0, 2);
+  lcd.print("   TO OFF / DOWN    ");
+  delay(2000);
+}
+
+/**
  * @brief  Determine the operator‑selected mode based on the three mode buttons.
  *
  * The function enforces mutual exclusion: if more than one mode button is held
@@ -220,8 +263,20 @@ MODE getModePress(MODE PRE_MODE)
   debounceButtonRead(&launch_M);
   debounceButtonRead(&fueling_M);
   debounceButtonRead(&dev_M);
+  debounceAbortRead(&abort_mission);
+  if (abort_mission.currState)
+  {
+    return PRE_MODE; // Must pull/twist ABORT button UP first!
+  }
 
   unsigned int launch_button = launch_M.currState;
+
+  // SAFETY INTERLOCK: Forbid switching out of Launch Mode while rocket is pressurized/armed!
+  // Operator must disarm (flip ARM switch DOWN) or hit ABORT first.
+  if (PRE_MODE == LAUNCH_MODE && (rocketState == ARMED || rocketState == LAUNCH || rocketState == VENTS_CLOSED))
+  {
+    return PRE_MODE; // Ignore DEV and FUEL buttons!
+  }
 
   // Special logic to prevent invalid entry to launch mode
   if (!launch_button)
@@ -236,6 +291,18 @@ MODE getModePress(MODE PRE_MODE)
   unsigned int fueling_button = fueling_M.currState;
   unsigned int dev_button = dev_M.currState;
 
+  // SAFETY INTERLOCK: Forbid exiting ABORT into DEV or FUELING if any valve levers are UP!
+  // Prevents instantly applying power to valves upon clearing abort.
+  if (PRE_MODE == LAUNCH_MODE && rocketState == ABORT && (fueling_button || dev_button))
+  {
+    if (!check_all_levers_down())
+    {
+      abort_exit_fail_message();
+      LCD_LaunchMode(); // Restore MISSION ABORT display
+      return PRE_MODE;  // Reject transition!
+    }
+  }
+
   if (launch_button + fueling_button + dev_button > 1)
   {
     // Invalid: multiple selections → stay in previous mode
@@ -245,7 +312,7 @@ MODE getModePress(MODE PRE_MODE)
   {
     if (PRE_MODE != LAUNCH_MODE)
     {
-      rocketState = PRE_ARM;
+      // rocketState = PRE_ARM;
       LCD_LaunchMode();
     }
     return LAUNCH_MODE;
@@ -288,16 +355,16 @@ void LCD_DevAndFueling(int mode)
 
   /* ---------- 1. Prepare the state list ---------- */
   DebouncedInput *valve_list[] = {
-      &lngPressure, &loxPressure, &gn2Vent, &lngVent, &lngFlow, &loxVent, &loxFlow};
+      &lngPressure, &loxPressure, &lngVent, &lngFlow, &loxVent, &loxFlow};
 
   /* ---------- 2. Prepare names (index 0 is the Dev-Mode header) ---------- */
   char **itemNames;
 
-  const char *itemNames_Dev[8] = {
-      "DEV MODE", "LNG_P", "LOX-P", "GN2-V", "LNG-V", "LNG-F", "LOX-V", "LOX-F"};
+  const char *itemNames_Dev[7] = {
+      "DEV MODE", "LNG_P", "LOX-P", "LNG-V", "LNG-F", "LOX-V", "LOX-F"};
 
-  const char *itemNames_Fueling[8] = {
-      "FUEL MODE", "LNG_P", "LOX-P", "GN2-V", "LNG-V", "LNG-F", "LOX-V", "LOX-F"};
+  const char *itemNames_Fueling[7] = {
+      "FUEL MODE", "LNG_P", "LOX-P", "LNG-V", "LNG-F", "LOX-V", "LOX-F"};
 
   // Decide on the mode to operate on
   if (mode == 0)
@@ -311,7 +378,7 @@ void LCD_DevAndFueling(int mode)
 
   /* ---------- 3. Draw the table: two cells (10 cols) per row ---------- */
   lcd.clear(); // wipe previous frame
-  for (uint8_t i = 0; i < 8; ++i)
+  for (uint8_t i = 0; i < 7; ++i)
   {
     uint8_t row = i / 2;        // rows 0-3
     uint8_t col = (i % 2) * 10; // 0 or 10
@@ -328,22 +395,9 @@ void LCD_DevAndFueling(int mode)
 
     // i-1 maps to valve_list index (0-6)
     uint8_t valve_mask = valve_list[i-1]->mask;
-    bool is_powered = (valve_mask & rocketState) != 0;
-    bool show_on;
-
-    // Fail-open valves (LNG-V, LOX-V): unpowered = open = shown as ON.
-    // Display only. rocketState and the packet sent to the FC are unchanged.
-    if (valve_mask & FAIL_OPEN_MASK)
-    {
-      show_on = !is_powered;   // invert for fail-open valves
-    }
-    else
-    {
-      show_on = is_powered;    // normal for fail-closed valves
-    }
-
-    lcd.print(show_on ? "OPN " : "CLD");
-
+    bool isEnergized = (valve_mask & rocketState) != 0;
+    bool isPhysicallyOpen = valve_list[i-1]->isFailOpen ? !isEnergized : isEnergized;
+    lcd.print(isPhysicallyOpen ? "OPN" : "CLD");
   }
 }
 
@@ -365,23 +419,40 @@ void LCD_LaunchMode()
   {
     lcd.setCursor(0, 1);
     lcd.print("    PRE ARM MODE   ");
+    lcd.setCursor(0, 2);
+    lcd.print("V:OPN  P:CLD  F:CLD");
   }
-  else if (ABORT == rocketState)
+  else if (VENTS_CLOSED == rocketState)
   {
     lcd.setCursor(0, 1);
-    lcd.print("   MISSION ABORT!  ");
+    lcd.print("    VENTS CLOSED   ");
+    lcd.setCursor(0, 2);
+    lcd.print("V:CLD  P:CLD  F:CLD");
   }
   else if (ARMED == rocketState)
   {
     lcd.setCursor(0, 1);
     lcd.print("      ARM MODE     ");
+    lcd.setCursor(0, 2);
+    lcd.print("V:CLD  P:OPN  F:CLD");
   }
   else if (LAUNCH == rocketState)
   {
     lcd.setCursor(0, 1);
     lcd.print("  ROCKET LAUNCHING! ");
+    lcd.setCursor(0, 2);
+    lcd.print("V:CLD  P:OPN  F:OPN");
     lcd.setCursor(0, 3);
     lcd.print("Ad Astra Per Aspera!");
+  }
+  else if (ABORT == rocketState)
+  {
+    lcd.setCursor(0, 1);
+    lcd.print("   MISSION ABORT!  ");
+    lcd.setCursor(0, 2);
+    lcd.print("V:OPN  P:CLD  F:CLD");
+    lcd.setCursor(0, 3);
+    lcd.print(" ALL VENTS OPENED! ");
   }
 }
 
@@ -412,6 +483,7 @@ void reset_readings()
   while (millis() - timer < 2000){
     // Read all swiches and buttons
     debounceSwitchRead(&arm);
+    debounceSwitchRead(&vent_sw);
     debounceAbortRead(&abort_mission);
     debounceButtonRead(&launch);
 
@@ -419,7 +491,6 @@ void reset_readings()
                                     &loxPressure,
                                     &lngFlow,
                                     &loxFlow,
-                                    &gn2Vent,
                                     &lngVent,
                                     &loxVent};
 
@@ -441,12 +512,14 @@ void launch_mode_fail_message(uint8_t event_id)
 
   switch (event_id){
     case (0):
-      lcd.clear(); // wipe previous frame
+      lcd.clear();
       lcd.setCursor(0, 0);
-      lcd.print(" LAUNCH MODE FAILED");
+      lcd.print(" LAUNCH MODE FAILED ");
       lcd.setCursor(0, 1);
-      lcd.print(" CLOSE ALL VALVES  ");
-      delay(1500);
+      lcd.print("  FLICK ALL LEVERS  ");
+      lcd.setCursor(0, 2);
+      lcd.print("    TO OFF / DOWN   ");
+      delay(2000);
       break;
 
     case (1):
@@ -455,9 +528,10 @@ void launch_mode_fail_message(uint8_t event_id)
         lcd.print(" LAUNCH MODE FAILED");
         lcd.setCursor(0, 1);
         String errorMsg = "";
-        errorMsg = "ARM:" + String(arm.currState) +
-                   ", ABT:" + String(abort_mission.currState) +
-                   ", LAU:" + String(launch.currState);
+        errorMsg = "  A:" + String(arm.currState) +
+                   " V:" + String(vent_sw.currState) +
+                   " L:" + String(launch.currState) +
+                   " AB:" + String(abort_mission.currState);
 
         lcd.print(errorMsg);
         delay(1500);
@@ -475,53 +549,32 @@ void launch_mode_fail_message(uint8_t event_id)
  */
 bool launch_mode_check()
 {
-
-  DebouncedInput *valve_list[] = {&lngPressure,
-                                  &loxPressure,
-                                  &lngFlow,
-                                  &loxFlow,
-                                  &gn2Vent,
-                                  &lngVent,
-                                  &loxVent};
-
-  uint8_t valve_open_count = 0;
-
-  for (DebouncedInput *item : valve_list)
-  {
-    debounceSwitchRead(item);
-
-    if (item->currState)
-    {
-      valve_open_count++;
-    }
-  }
-
-  // Some valves are still opened, closed them before entering into launch mode
-  if (valve_open_count != 0)
+  // Check that all 6 valve levers are DOWN / OFF
+  if (!check_all_levers_down())
   {
     launch_mode_fail_message(0);
     return false;
   }
 
   debounceSwitchRead(&arm);
+  debounceSwitchRead(&vent_sw);
   debounceAbortRead(&abort_mission);
   debounceButtonRead(&launch);
 
   unsigned int arm_switch = arm.currState;
+  unsigned int vent_switch = vent_sw.currState;
   unsigned int abort_button = abort_mission.currState;
   unsigned int launch_button = launch.currState;
 
-  // One of the launch mode buttons were opened, close them before entering
-  // into launch mode
-  if (arm_switch || abort_button || launch_button){
+  if (arm_switch || vent_switch || abort_button || launch_button)
+  {
     launch_mode_fail_message(1);
     return false;
   }
-
-  //Force the state to reset to PRE_ARM
+  
+  // Explicitly initialize state machine to PRE_ARM upon passing check
   rocketState = PRE_ARM;
 
-  // Safety entering into launch mode
   return true;
 }
 
@@ -543,10 +596,12 @@ void launch_mode_logic()
 
   // Read selectors
   debounceSwitchRead(&arm);
+  debounceSwitchRead(&vent_sw);
   debounceAbortRead(&abort_mission);
   debounceButtonRead(&launch);
 
   unsigned int arm_switch = arm.currState;
+  unsigned int vent_switch = vent_sw.currState;
   unsigned int abort_button = abort_mission.currState;
   unsigned int launch_button = launch.currState;
 
@@ -554,34 +609,59 @@ void launch_mode_logic()
   switch (rocketState)
   {
   case PRE_ARM:
+    vent_ready_to_open = false;
     if (abort_button)
+    {
       rocketState = ABORT;
-    else if (arm_switch)
-      rocketState = ARMED;
+    }
+    else if (vent_switch && !arm_switch)
+    {
+      rocketState = VENTS_CLOSED;
+    }
     break;
-
+  case VENTS_CLOSED:
+    if (abort_button)
+    {
+      rocketState = ABORT;
+    }
+    else if (vent_switch)
+    {
+      vent_ready_to_open = true; // Confirmed UP in VENTS_CLOSED state
+      if (arm_switch)
+      {
+        rocketState = ARMED; // Vents verified closed -> open press valves
+      }
+    }
+    else if (!vent_switch && vent_ready_to_open)
+    {
+      vent_ready_to_open = false;
+      rocketState = PRE_ARM; // Operator manually toggled vents open
+    }
+    break;
   case ARMED:
+    vent_ready_to_open = false; // Reset: disarm must verify switch UP before opening vents
     if (abort_button)
+    {
       rocketState = ABORT;
+    }
     else if (!arm_switch)
-      rocketState = PRE_ARM;
+    {
+      // Disarmed: pressures snap shut immediately; vents remain powered closed!
+      rocketState = VENTS_CLOSED;
+    }
     else if (launch_button)
+    {
       rocketState = LAUNCH;
+    }
     break;
-
   case LAUNCH:
-    // In launch state abort may still be possible
-    // In static fire: abort is possible
-    // In launch: abort is not possible
     if (abort_button)
       rocketState = ABORT;
     break;
-
   case ABORT:
-    rocketState = ABORT; // Latched until system reset
+    rocketState = ABORT; // Latched until reset
     break;
   }
-
   // Refresh LCD display
   if (initial_rocketState != rocketState)
   {
@@ -600,8 +680,7 @@ void fueling_mode_logic()
 {
   uint8_t initial_rocketState = rocketState;
 
-  DebouncedInput *valve_list[] = {&gn2Vent,
-                                  &lngVent,
+  DebouncedInput *valve_list[] = {&lngVent,
                                   &loxVent};
 
   for (DebouncedInput *item : valve_list)
@@ -645,7 +724,6 @@ void dev_mode_logic()
                                   &loxPressure,
                                   &lngFlow,
                                   &loxFlow,
-                                  &gn2Vent,
                                   &lngVent,
                                   &loxVent};
 
@@ -685,7 +763,7 @@ void sendRocketState(uint8_t currRocketState)
   // --- 1) Relief-valve Arduino -------------------------------------------
   memcpy(pkt, MAC_RELIEF_VALVE, 6);       // destination
   memcpy(pkt + 6, MAC_GROUND_STATION, 6); // source
-  if (w5500.sendFrame(pkt, sizeof(pkt)) < 0)
+  if (w5500.sendFrame(pkt, sizeof(pkt)) != sizeof(pkt))
   {
     Serial.println(F("TX-error → relief valve"));
   }
@@ -693,7 +771,7 @@ void sendRocketState(uint8_t currRocketState)
   // --- 2) Flow-valve Arduino ---------------------------------------------
   memcpy(pkt, MAC_FLOW_VALVE, 6); // destination
   // source MAC is already correct, no need to write again
-  if (w5500.sendFrame(pkt, sizeof(pkt)) < 0)
+  if (w5500.sendFrame(pkt, sizeof(pkt)) != sizeof(pkt))
   {
     Serial.println(F("TX-error → flow valve"));
   }
@@ -822,35 +900,38 @@ void setup()
   // Start in safe state
   rocketState = PRE_ARM;
 
+
+
   // Configure all control inputs as pull‑ups (active‑LOW)
   pinMode(PIN_LNG_P, INPUT_PULLUP);
   pinMode(PIN_LOX_P, INPUT_PULLUP);
   pinMode(PIN_LNG_F, INPUT_PULLUP);
   pinMode(PIN_LOX_F, INPUT_PULLUP);
-  pinMode(PIN_GN2_V, INPUT_PULLUP);
   pinMode(PIN_LNG_V, INPUT_PULLUP);
   pinMode(PIN_LOX_V, INPUT_PULLUP);
   pinMode(PIN_ARM, INPUT_PULLUP);
+  pinMode(PIN_VENT_SW, INPUT_PULLUP);
   pinMode(PIN_ABORT, INPUT_PULLUP);
   pinMode(PIN_LAUNCH, INPUT_PULLUP);
   pinMode(PIN_LAUNCH_M, INPUT_PULLUP);
   pinMode(PIN_FUELING_M, INPUT_PULLUP);
   pinMode(PIN_DEV_M, INPUT_PULLUP);
 
-  // Map physical pins to DebouncedInput objects
-  lngPressure = {PIN_LNG_P, LOW, LOW, 0, LNG_PRES_MASK};
-  loxPressure = {PIN_LOX_P, LOW, LOW, 0, LOX_PRES_MASK};
-  lngFlow = {PIN_LNG_F, LOW, LOW, 0, LNG_FLOW_MASK};
-  loxFlow = {PIN_LOX_F, LOW, LOW, 0, LOX_FLOW_MASK};
-  gn2Vent = {PIN_GN2_V, LOW, LOW, 0, GN2_VENT_MASK};
-  lngVent = {PIN_LNG_V, LOW, LOW, 0, LNG_VENT_MASK};
-  loxVent = {PIN_LOX_V, LOW, LOW, 0, LOX_VENT_MASK};
-  arm = {PIN_ARM, LOW, LOW, 0, NULL_MASK};
-  abort_mission = {PIN_ABORT, LOW, LOW, 0, NULL_MASK};
-  launch = {PIN_LAUNCH, LOW, LOW, 0, NULL_MASK};
-  launch_M = {PIN_LAUNCH_M, LOW, LOW, 0, NULL_MASK};
-  fueling_M = {PIN_FUELING_M, LOW, LOW, 0, NULL_MASK};
-  dev_M = {PIN_DEV_M, LOW, LOW, 0, NULL_MASK};
+  // Map physical pins to DebouncedInput structs
+  //                 PIN  States:curr/prev  DB time   bitmask     if it's fail_open
+  lngPressure   = {PIN_LNG_P,       LOW, LOW, 0, LNG_PRES_MASK, (FAIL_OPEN_MASK & LNG_PRES_MASK) != 0};
+  loxPressure   = {PIN_LOX_P,       LOW, LOW, 0, LOX_PRES_MASK, (FAIL_OPEN_MASK & LOX_PRES_MASK) != 0};
+  lngFlow       = {PIN_LNG_F,       LOW, LOW, 0, LNG_FLOW_MASK, (FAIL_OPEN_MASK & LNG_FLOW_MASK) != 0};
+  loxFlow       = {PIN_LOX_F,       LOW, LOW, 0, LOX_FLOW_MASK, (FAIL_OPEN_MASK & LOX_FLOW_MASK) != 0};
+  lngVent       = {PIN_LNG_V,       LOW, LOW, 0, LNG_VENT_MASK, (FAIL_OPEN_MASK & LNG_VENT_MASK) != 0};
+  loxVent       = {PIN_LOX_V,       LOW, LOW, 0, LOX_VENT_MASK, (FAIL_OPEN_MASK & LOX_VENT_MASK) != 0};
+  arm           = {PIN_ARM,         LOW, LOW, 0, NULL_MASK,     false}; // NULL mask cannot be fail_open
+  vent_sw       = {PIN_VENT_SW,     LOW, LOW, 0, NULL_MASK,     false};
+  abort_mission = {PIN_ABORT,       LOW, LOW, 0, NULL_MASK,     false};
+  launch        = {PIN_LAUNCH,      LOW, LOW, 0, NULL_MASK,     false};
+  launch_M      = {PIN_LAUNCH_M,    LOW, LOW, 0, NULL_MASK,     false};
+  fueling_M     = {PIN_FUELING_M,   LOW, LOW, 0, NULL_MASK,     false};
+  dev_M         = {PIN_DEV_M,       LOW, LOW, 0, NULL_MASK,     false};
 
   // Bring up Ethernet in MAC‑RAW mode
   Serial.println("Ethernet Module Starting...");
@@ -924,8 +1005,8 @@ void loop()
           if (operationMode == DEV_MODE)
           {
             LCD_DevAndFueling(0);
-            break;
           }
+          break;
         }
 
         LCD_LaunchMode();
